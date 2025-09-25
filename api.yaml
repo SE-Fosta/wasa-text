@@ -1,0 +1,786 @@
+openapi: 3.0.3
+info:
+  title: WASAText API
+  description: |-
+    WASAText messaging platform API.
+    Connect with your friends effortlessly using WASAText! Send and receive messages, 
+    whether one-on-one or in groups, all from the convenience of your PC.
+  version: "1.0.0"
+  contact:
+    name: WASAText Team
+    email: support@wasatext.com
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /session:
+    post:
+      tags: ["login"]
+      summary: Logs in the user
+      description: |-
+        If the user does not exist, it will be created,
+        and an identifier is returned.
+        If the user exists, the user identifier is returned.
+      operationId: doLogin
+      security: []
+      requestBody:
+        description: User details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Maria
+                  pattern: '^.*?$'
+                  minLength: 3
+                  maxLength: 16
+              required:
+                - name
+      responses:
+        '201':
+          description: User log-in action successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identifier:
+                    type: string
+                    example: "abcdef012345"
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{userId}/username:
+    put:
+      tags: ["user"]
+      summary: Update user's username
+      description: Updates the current user's username if not already taken
+      operationId: setMyUserName
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "abcdef012345"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 16
+                  example: "NewUsername"
+              required:
+                - name
+      responses:
+        '204':
+          description: Username updated successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Username already taken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{userId}/photo:
+    put:
+      tags: ["user"]
+      summary: Set user profile photo
+      description: Uploads and sets the user's profile photo
+      operationId: setMyPhoto
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "abcdef012345"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+              required:
+                - photo
+      responses:
+        '204':
+          description: Photo updated successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{userId}/conversations:
+    get:
+      tags: ["conversations"]
+      summary: Get user's conversations
+      description: Retrieves all conversations for the authenticated user
+      operationId: getMyConversations
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "abcdef012345"
+      responses:
+        '200':
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConversationSummary'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /conversations/{conversationId}:
+    get:
+      tags: ["conversations"]
+      summary: Get conversation messages
+      description: Retrieves all messages from a specific conversation
+      operationId: getConversation
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "conv123456"
+      responses:
+        '200':
+          description: Conversation messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /conversations/{conversationId}/messages:
+    post:
+      tags: ["messages"]
+      summary: Send a message
+      description: Sends a new message to a conversation
+      operationId: sendMessage
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "conv123456"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  example: "Hello there!"
+                messageType:
+                  type: string
+                  enum: ["text", "photo"]
+                  example: "text"
+                replyTo:
+                  type: string
+                  example: "msg789"
+              required:
+                - content
+                - messageType
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                messageType:
+                  type: string
+                  enum: ["photo"]
+                replyTo:
+                  type: string
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages/{messageId}/forward:
+    post:
+      tags: ["messages"]
+      summary: Forward a message
+      description: Forwards an existing message to another conversation
+      operationId: forwardMessage
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "msg123456"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetConversationId:
+                  type: string
+                  example: "conv789012"
+              required:
+                - targetConversationId
+      responses:
+        '201':
+          description: Message forwarded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages/{messageId}/comments:
+    post:
+      tags: ["messages"]
+      summary: React to a message
+      description: Adds an emoji reaction to a message
+      operationId: commentMessage
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "msg123456"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                emoji:
+                  type: string
+                  example: "👍"
+              required:
+                - emoji
+      responses:
+        '201':
+          description: Reaction added successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: ["messages"]
+      summary: Remove reaction from message
+      description: Removes the user's reaction from a message
+      operationId: uncommentMessage
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "msg123456"
+      responses:
+        '204':
+          description: Reaction removed successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Message or reaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages/{messageId}:
+    delete:
+      tags: ["messages"]
+      summary: Delete a message
+      description: Deletes a message sent by the current user
+      operationId: deleteMessage
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "msg123456"
+      responses:
+        '204':
+          description: Message deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Cannot delete message from another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups/{groupId}/members:
+    post:
+      tags: ["groups"]
+      summary: Add user to group
+      description: Adds a user to an existing group
+      operationId: addToGroup
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "group123456"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  example: "user789012"
+              required:
+                - userId
+      responses:
+        '201':
+          description: User added to group successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups/{groupId}/members/{userId}:
+    delete:
+      tags: ["groups"]
+      summary: Leave group
+      description: Removes the current user from a group
+      operationId: leaveGroup
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "group123456"
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "user789012"
+      responses:
+        '204':
+          description: Left group successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups/{groupId}/name:
+    put:
+      tags: ["groups"]
+      summary: Set group name
+      description: Updates the name of a group
+      operationId: setGroupName
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "group123456"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  example: "My Friends Group"
+              required:
+                - name
+      responses:
+        '204':
+          description: Group name updated successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /groups/{groupId}/photo:
+    put:
+      tags: ["groups"]
+      summary: Set group photo
+      description: Uploads and sets the group's photo
+      operationId: setGroupPhoto
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "group123456"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+              required:
+                - photo
+      responses:
+        '204':
+          description: Group photo updated successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Use the user identifier returned from login
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Error message"
+        code:
+          type: string
+          example: "ERROR_CODE"
+      required:
+        - message
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user123456"
+        username:
+          type: string
+          example: "Maria"
+        photoUrl:
+          type: string
+          example: "https://api.wasatext.com/photos/user123456.jpg"
+      required:
+        - id
+        - username
+
+    ConversationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "conv123456"
+        name:
+          type: string
+          example: "Maria"
+        photoUrl:
+          type: string
+          example: "https://api.wasatext.com/photos/conv123456.jpg"
+        lastMessage:
+          $ref: '#/components/schemas/MessagePreview'
+        lastActivity:
+          type: string
+          format: date-time
+          example: "2025-09-24T14:30:00Z"
+        isGroup:
+          type: boolean
+          example: false
+        unreadCount:
+          type: integer
+          example: 3
+      required:
+        - id
+        - name
+        - lastActivity
+        - isGroup
+        - unreadCount
+
+    MessagePreview:
+      type: object
+      properties:
+        content:
+          type: string
+          example: "Hello there!"
+        messageType:
+          type: string
+          enum: ["text", "photo"]
+          example: "text"
+        senderName:
+          type: string
+          example: "Maria"
+      required:
+        - messageType
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "conv123456"
+        name:
+          type: string
+          example: "Maria"
+        photoUrl:
+          type: string
+          example: "https://api.wasatext.com/photos/conv123456.jpg"
+        isGroup:
+          type: boolean
+          example: false
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+      required:
+        - id
+        - name
+        - isGroup
+        - messages
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "msg123456"
+        content:
+          type: string
+          example: "Hello there!"
+        messageType:
+          type: string
+          enum: ["text", "photo"]
+          example: "text"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-09-24T14:30:00Z"
+        senderId:
+          type: string
+          example: "user123456"
+        senderName:
+          type: string
+          example: "Maria"
+        delivered:
+          type: boolean
+          example: true
+        read:
+          type: boolean
+          example: false
+        replyTo:
+          type: string
+          example: "msg789012"
+        reactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reaction'
+        photoUrl:
+          type: string
+          example: "https://api.wasatext.com/photos/msg123456.jpg"
+      required:
+        - id
+        - messageType
+        - timestamp
+        - senderId
+        - delivered
+        - read
+
+    Reaction:
+      type: object
+      properties:
+        userId:
+          type: string
+          example: "user123456"
+        userName:
+          type: string
+          example: "Maria"
+        emoji:
+          type: string
+          example: "👍"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-09-24T14:30:00Z"
+      required:
+        - userId
+        - userName
+        - emoji
+        - timestamp
+
