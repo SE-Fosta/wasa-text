@@ -3,12 +3,24 @@ info:
   title: WASAText API
   description: |-
     WASAText messaging platform API.
-    Connect with your friends effortlessly using WASAText! Send and receive messages, 
+    Connect with your friends effortlessly using WASAText! Send and receive messages,
     whether one-on-one or in groups, all from the convenience of your PC.
   version: "1.0.0"
   contact:
     name: WASAText Team
     email: support@wasatext.com
+
+tags:
+  - name: login
+    description: User authentication operations
+  - name: user
+    description: User profile management
+  - name: conversations
+    description: Conversation management operations
+  - name: messages
+    description: Message operations
+  - name: groups
+    description: Group management operations
 
 servers:
   - url: http://localhost:3000
@@ -30,15 +42,18 @@ paths:
       security: []
       requestBody:
         description: User details
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Login request payload
               properties:
                 name:
                   type: string
+                  description: Username for login
                   example: Maria
-                  pattern: '^.*?$'
+                  pattern: '^[a-zA-Z0-9_-]+$'
                   minLength: 3
                   maxLength: 16
               required:
@@ -50,10 +65,14 @@ paths:
             application/json:
               schema:
                 type: object
+                description: Login response containing user identifier
                 properties:
                   identifier:
                     type: string
+                    description: Unique user identifier for authentication
                     example: "abcdef012345"
+                    minLength: 1
+                    maxLength: 255
         '400':
           description: Bad request
           content:
@@ -62,28 +81,36 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /users/{userId}/username:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        description: Unique identifier of the user
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "abcdef012345"
     put:
       tags: ["user"]
       summary: Update user's username
       description: Updates the current user's username if not already taken
       operationId: setMyUserName
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "abcdef012345"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Username update request
               properties:
                 name:
                   type: string
+                  description: New username for the user
                   minLength: 3
                   maxLength: 16
+                  pattern: '^[a-zA-Z0-9_-]+$'
                   example: "NewUsername"
               required:
                 - name
@@ -110,27 +137,34 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /users/{userId}/photo:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        description: Unique identifier of the user
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "abcdef012345"
     put:
       tags: ["user"]
       summary: Set user profile photo
       description: Uploads and sets the user's profile photo
       operationId: setMyPhoto
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "abcdef012345"
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              description: Photo upload request
               properties:
                 photo:
                   type: string
                   format: binary
+                  description: Profile photo file
               required:
                 - photo
       responses:
@@ -150,18 +184,22 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /users/{userId}/conversations:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        description: Unique identifier of the user
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "abcdef012345"
     get:
       tags: ["conversations"]
       summary: Get user's conversations
       description: Retrieves all conversations for the authenticated user
       operationId: getMyConversations
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "abcdef012345"
       responses:
         '200':
           description: List of conversations
@@ -169,6 +207,9 @@ paths:
             application/json:
               schema:
                 type: array
+                description: Array of conversation summaries
+                minItems: 0
+                maxItems: 10000
                 items:
                   $ref: '#/components/schemas/ConversationSummary'
         '401':
@@ -179,18 +220,22 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /conversations/{conversationId}:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        description: Unique identifier of the conversation
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "conv123456"
     get:
       tags: ["conversations"]
       summary: Get conversation messages
       description: Retrieves all messages from a specific conversation
       operationId: getConversation
-      parameters:
-        - name: conversationId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "conv123456"
       responses:
         '200':
           description: Conversation messages
@@ -212,49 +257,73 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /conversations/{conversationId}/messages:
+    parameters:
+      - name: conversationId
+        in: path
+        required: true
+        description: Unique identifier of the conversation
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "conv123456"
     post:
       tags: ["messages"]
       summary: Send a message
       description: Sends a new message to a conversation
       operationId: sendMessage
-      parameters:
-        - name: conversationId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "conv123456"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Message content for text messages
               properties:
                 content:
                   type: string
+                  description: Text content of the message
                   example: "Hello there!"
+                  minLength: 1
+                  maxLength: 5000
                 messageType:
                   type: string
+                  description: Type of message being sent
                   enum: ["text", "photo"]
                   example: "text"
                 replyTo:
                   type: string
+                  description: ID of message being replied to
                   example: "msg789"
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  minLength: 1
+                  maxLength: 255
               required:
                 - content
                 - messageType
           multipart/form-data:
             schema:
               type: object
+              description: Message content for photo messages
               properties:
                 photo:
                   type: string
                   format: binary
+                  description: Photo file to send
                 messageType:
                   type: string
+                  description: Type of message being sent
                   enum: ["photo"]
                 replyTo:
                   type: string
+                  description: ID of message being replied to
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  minLength: 1
+                  maxLength: 255
+              required:
+                - photo
+                - messageType
       responses:
         '201':
           description: Message sent successfully
@@ -276,27 +345,37 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /messages/{messageId}/forward:
+    parameters:
+      - name: messageId
+        in: path
+        required: true
+        description: Unique identifier of the message to forward
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "msg123456"
     post:
       tags: ["messages"]
       summary: Forward a message
       description: Forwards an existing message to another conversation
       operationId: forwardMessage
-      parameters:
-        - name: messageId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "msg123456"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Forward message request
               properties:
                 targetConversationId:
                   type: string
+                  description: ID of the conversation to forward the message to
                   example: "conv789012"
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  minLength: 1
+                  maxLength: 255
               required:
                 - targetConversationId
       responses:
@@ -326,32 +405,51 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /messages/{messageId}/comments:
+    parameters:
+      - name: messageId
+        in: path
+        required: true
+        description: Unique identifier of the message
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "msg123456"
     post:
       tags: ["messages"]
       summary: React to a message
       description: Adds an emoji reaction to a message
       operationId: commentMessage
-      parameters:
-        - name: messageId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "msg123456"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Reaction request
               properties:
                 emoji:
                   type: string
+                  description: Emoji to react with
                   example: "👍"
+                  minLength: 1
+                  maxLength: 10
               required:
                 - emoji
       responses:
         '201':
           description: Reaction added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Reaction confirmation
+                properties:
+                  success:
+                    type: boolean
+                    description: Indicates if the operation was successful
+                    example: true
         '400':
           description: Bad request
           content:
@@ -370,13 +468,6 @@ paths:
       summary: Remove reaction from message
       description: Removes the user's reaction from a message
       operationId: uncommentMessage
-      parameters:
-        - name: messageId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "msg123456"
       responses:
         '204':
           description: Reaction removed successfully
@@ -394,18 +485,22 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /messages/{messageId}:
+    parameters:
+      - name: messageId
+        in: path
+        required: true
+        description: Unique identifier of the message
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "msg123456"
     delete:
       tags: ["messages"]
       summary: Delete a message
       description: Deletes a message sent by the current user
       operationId: deleteMessage
-      parameters:
-        - name: messageId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "msg123456"
       responses:
         '204':
           description: Message deleted successfully
@@ -429,32 +524,52 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /groups/{groupId}/members:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        description: Unique identifier of the group
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "group123456"
     post:
       tags: ["groups"]
       summary: Add user to group
       description: Adds a user to an existing group
       operationId: addToGroup
-      parameters:
-        - name: groupId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "group123456"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Add user to group request
               properties:
                 userId:
                   type: string
+                  description: ID of the user to add to the group
                   example: "user789012"
+                  pattern: '^[a-zA-Z0-9_-]+$'
+                  minLength: 1
+                  maxLength: 255
               required:
                 - userId
       responses:
         '201':
           description: User added to group successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Add member confirmation
+                properties:
+                  success:
+                    type: boolean
+                    description: Indicates if the operation was successful
+                    example: true
         '400':
           description: Bad request
           content:
@@ -475,24 +590,32 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /groups/{groupId}/members/{userId}:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        description: Unique identifier of the group
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "group123456"
+      - name: userId
+        in: path
+        required: true
+        description: Unique identifier of the user to remove
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "user789012"
     delete:
       tags: ["groups"]
       summary: Leave group
       description: Removes the current user from a group
       operationId: leaveGroup
-      parameters:
-        - name: groupId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "group123456"
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "user789012"
       responses:
         '204':
           description: Left group successfully
@@ -510,28 +633,36 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /groups/{groupId}/name:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        description: Unique identifier of the group
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "group123456"
     put:
       tags: ["groups"]
       summary: Set group name
       description: Updates the name of a group
       operationId: setGroupName
-      parameters:
-        - name: groupId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "group123456"
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
+              description: Group name update request
               properties:
                 name:
                   type: string
+                  description: New name for the group
                   minLength: 1
                   maxLength: 50
+                  pattern: '^.*$'
                   example: "My Friends Group"
               required:
                 - name
@@ -558,27 +689,34 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /groups/{groupId}/photo:
+    parameters:
+      - name: groupId
+        in: path
+        required: true
+        description: Unique identifier of the group
+        schema:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
+        example: "group123456"
     put:
       tags: ["groups"]
       summary: Set group photo
       description: Uploads and sets the group's photo
       operationId: setGroupPhoto
-      parameters:
-        - name: groupId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "group123456"
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              description: Group photo upload request
               properties:
                 photo:
                   type: string
                   format: binary
+                  description: Group photo file
               required:
                 - photo
       responses:
@@ -613,56 +751,92 @@ components:
   schemas:
     Error:
       type: object
+      description: Error response object
       properties:
         message:
           type: string
+          description: Human-readable error message
           example: "Error message"
+          minLength: 1
+          maxLength: 1000
         code:
           type: string
+          description: Machine-readable error code
           example: "ERROR_CODE"
+          pattern: '^[A-Z_]+$'
+          minLength: 1
+          maxLength: 50
       required:
         - message
 
     User:
       type: object
+      description: User information object
       properties:
         id:
           type: string
+          description: Unique user identifier
           example: "user123456"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         username:
           type: string
+          description: User's display name
           example: "Maria"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 3
+          maxLength: 16
         photoUrl:
           type: string
+          description: URL to user's profile photo
           example: "https://api.wasatext.com/photos/user123456.jpg"
+          minLength: 1
+          maxLength: 2048
       required:
         - id
         - username
 
     ConversationSummary:
       type: object
+      description: Summary of a conversation for list view
       properties:
         id:
           type: string
+          description: Unique conversation identifier
           example: "conv123456"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         name:
           type: string
+          description: Display name of the conversation
           example: "Maria"
+          minLength: 1
+          maxLength: 100
         photoUrl:
           type: string
+          description: URL to conversation photo
           example: "https://api.wasatext.com/photos/conv123456.jpg"
+          minLength: 1
+          maxLength: 2048
         lastMessage:
           $ref: '#/components/schemas/MessagePreview'
         lastActivity:
           type: string
           format: date-time
+          description: Timestamp of last activity in the conversation
           example: "2025-09-24T14:30:00Z"
         isGroup:
           type: boolean
+          description: Whether this is a group conversation
           example: false
         unreadCount:
           type: integer
+          description: Number of unread messages
           example: 3
+          minimum: 0
+          maximum: 99999
       required:
         - id
         - name
@@ -672,41 +846,67 @@ components:
 
     MessagePreview:
       type: object
+      description: Preview of the last message in a conversation
       properties:
         content:
           type: string
+          description: Text content or description of the message
           example: "Hello there!"
+          minLength: 0
+          maxLength: 5000
         messageType:
           type: string
+          description: Type of the message
           enum: ["text", "photo"]
           example: "text"
         senderName:
           type: string
+          description: Name of the message sender
           example: "Maria"
+          minLength: 1
+          maxLength: 100
       required:
         - messageType
 
     Conversation:
       type: object
+      description: Full conversation with all messages
       properties:
         id:
           type: string
+          description: Unique conversation identifier
           example: "conv123456"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         name:
           type: string
+          description: Display name of the conversation
           example: "Maria"
+          minLength: 1
+          maxLength: 100
         photoUrl:
           type: string
+          description: URL to conversation photo
           example: "https://api.wasatext.com/photos/conv123456.jpg"
+          minLength: 1
+          maxLength: 2048
         isGroup:
           type: boolean
+          description: Whether this is a group conversation
           example: false
         members:
           type: array
+          description: List of conversation members
+          minItems: 0
+          maxItems: 1000
           items:
             $ref: '#/components/schemas/User'
         messages:
           type: array
+          description: List of messages in the conversation
+          minItems: 0
+          maxItems: 100000
           items:
             $ref: '#/components/schemas/Message'
       required:
@@ -717,43 +917,72 @@ components:
 
     Message:
       type: object
+      description: A single message in a conversation
       properties:
         id:
           type: string
+          description: Unique message identifier
           example: "msg123456"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         content:
           type: string
+          description: Text content of the message
           example: "Hello there!"
+          minLength: 0
+          maxLength: 5000
         messageType:
           type: string
+          description: Type of the message
           enum: ["text", "photo"]
           example: "text"
         timestamp:
           type: string
           format: date-time
+          description: When the message was sent
           example: "2025-09-24T14:30:00Z"
         senderId:
           type: string
+          description: ID of the user who sent the message
           example: "user123456"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         senderName:
           type: string
+          description: Display name of the sender
           example: "Maria"
+          minLength: 1
+          maxLength: 100
         delivered:
           type: boolean
+          description: Whether the message has been delivered
           example: true
         read:
           type: boolean
+          description: Whether the message has been read
           example: false
         replyTo:
           type: string
+          description: ID of the message this is replying to
           example: "msg789012"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         reactions:
           type: array
+          description: List of reactions to this message
+          minItems: 0
+          maxItems: 1000
           items:
             $ref: '#/components/schemas/Reaction'
         photoUrl:
           type: string
+          description: URL to photo if messageType is photo
           example: "https://api.wasatext.com/photos/msg123456.jpg"
+          minLength: 1
+          maxLength: 2048
       required:
         - id
         - messageType
@@ -764,23 +993,34 @@ components:
 
     Reaction:
       type: object
+      description: An emoji reaction to a message
       properties:
         userId:
           type: string
+          description: ID of the user who reacted
           example: "user123456"
+          pattern: '^[a-zA-Z0-9_-]+$'
+          minLength: 1
+          maxLength: 255
         userName:
           type: string
+          description: Display name of the user who reacted
           example: "Maria"
+          minLength: 1
+          maxLength: 100
         emoji:
           type: string
+          description: The emoji used for the reaction
           example: "👍"
+          minLength: 1
+          maxLength: 10
         timestamp:
           type: string
           format: date-time
+          description: When the reaction was added
           example: "2025-09-24T14:30:00Z"
       required:
         - userId
         - userName
         - emoji
         - timestamp
-
