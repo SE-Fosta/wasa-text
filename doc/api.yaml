@@ -6,9 +6,6 @@ info:
     Connect with your friends effortlessly using WASAText! Send and receive messages,
     whether one-on-one or in groups, all from the convenience of your PC.
   version: "1.0.0"
-  contact:
-    name: WASAText Team
-    email: support@wasatext.com
 
 tags:
   - name: login
@@ -811,7 +808,6 @@ components:
         name:
           type: string
           description: Display name of the conversation
-          pattern: '^[a-zA-Z]+$'
           example: "Maria"
           minLength: 1
           maxLength: 100
@@ -828,7 +824,6 @@ components:
           format: date-time
           description: Timestamp of last activity in the conversation
           example: "2025-09-24T14:30:00Z"
-          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))$'
         isGroup:
           type: boolean
           description: Whether this is a group conversation
@@ -854,7 +849,6 @@ components:
           type: string
           description: Text content or description of the message
           example: "Hello there!"
-          pattern: '^[a-zA-Z0-9_-]+$'
           minLength: 0
           maxLength: 5000
         messageType:
@@ -866,7 +860,6 @@ components:
           type: string
           description: Name of the message sender
           example: "Maria"
-          pattern: '^[a-zA-Z]+$'
           minLength: 1
           maxLength: 100
       required:
@@ -886,7 +879,6 @@ components:
         name:
           type: string
           description: Display name of the conversation
-          pattern: '^[a-zA-Z]+$'
           example: "Maria"
           minLength: 1
           maxLength: 100
@@ -935,7 +927,6 @@ components:
           type: string
           description: Text content of the message
           example: "Hello there!"
-          pattern: '^[a-zA-Z0-9_-]+$'
           minLength: 0
           maxLength: 5000
         messageType:
@@ -947,7 +938,6 @@ components:
           type: string
           format: date-time
           description: When the message was sent
-          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))$'
           example: "2025-09-24T14:30:00Z"
         senderId:
           type: string
@@ -960,7 +950,6 @@ components:
           type: string
           description: Display name of the sender
           example: "Maria"
-          pattern: "^[a-zA-Z]+$"
           minLength: 1
           maxLength: 100
         delivered:
@@ -1014,14 +1003,12 @@ components:
           type: string
           description: Display name of the user who reacted
           example: "Maria"
-          pattern: '^[a-zA-Z0-9_-]+$'
           minLength: 1
           maxLength: 100
         emoji:
           type: string
           description: The emoji used for the reaction
           example: "👍"
-          pattern: '^.+$'
           minLength: 1
           maxLength: 10
         timestamp:
@@ -1029,7 +1016,6 @@ components:
           format: date-time
           description: When the reaction was added
           example: "2025-09-24T14:30:00Z"
-          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))$'
       required:
         - userId
         - userName
