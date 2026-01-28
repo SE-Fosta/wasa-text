@@ -2,10 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"io"
+	//"io"
 	"net/http"
 	"strings"
-	"wasa-text/service" // Assicurati che il module name nel go.mod sia 'wasa-text'
+	"wasa-text/service/database" // Assicurati che il module name nel go.mod sia 'wasa-text'
 
 "github.com/gorilla/mux"
 )
@@ -83,7 +83,7 @@ func DoLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := service.DoLogin(req.Name)
+	userID, err := database.DoLogin(req.Name)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -109,7 +109,7 @@ func SetMyUserName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := service.SetMyUserName(authUserID, req.Name)
+	err := database.SetMyUserName(authUserID, req.Name)
 	if err != nil {
 		if err.Error() == "username already taken" {
 			sendError(w, http.StatusConflict, "Username already taken")
@@ -149,7 +149,7 @@ func SetMyPhoto(w http.ResponseWriter, r *http.Request) {
 	// Qui simuliamo salvando un URL statico o generato.
 	fakePhotoURL := "http://localhost:3000/static/photos/" + vars["userId"] + ".jpg"
 
-	if err := service.SetMyPhoto(vars["userId"], fakePhotoURL); err != nil {
+	if err := database.SetMyPhoto(vars["userId"], fakePhotoURL); err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -165,7 +165,7 @@ func GetMyConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conversations, err := service.GetMyConversations(vars["userId"])
+	conversations, err := database.GetMyConversations(vars["userId"])
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -173,7 +173,7 @@ func GetMyConversations(w http.ResponseWriter, r *http.Request) {
 
 	// Se slice è nil, ritorniamo array vuoto [] invece di null
 	if conversations == nil {
-		conversations = []service.ConversationSummary{}
+		conversations = []database.ConversationSummary{}
 	}
 
 	sendJSONResponse(w, http.StatusOK, conversations)
@@ -188,7 +188,7 @@ func GetConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vars := mux.Vars(r)
-	messages, members, err := service.GetConversation(vars["conversationId"])
+	messages, members, err := database.GetConversation(vars["conversationId"])
 	if err != nil {
 		sendError(w, http.StatusNotFound, "Conversation not found") // O errore DB
 		return
@@ -219,7 +219,7 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	convID := vars["conversationId"]
 
-	var msg service.Message
+	var msg database.Message
 	var err error
 
 	// Gestione Text vs Photo (semplificata: controlliamo Content-Type)
@@ -231,7 +231,7 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 			sendError(w, http.StatusBadRequest, "Invalid JSON")
 			return
 		}
-		msg, err = service.SendMessage(convID, userID, req.Content, "text", "", req.ReplyTo)
+		msg, err = database.SendMessage(convID, userID, req.Content, "text", "", req.ReplyTo)
 
 	} else if strings.Contains(contentType, "multipart/form-data") {
 		// Gestione invio foto
@@ -247,7 +247,7 @@ func SendMessage(w http.ResponseWriter, r *http.Request) {
 		fakeURL := "http://localhost:3000/static/uploads/img.jpg"
 		replyTo := r.FormValue("replyTo")
 
-		msg, err = service.SendMessage(convID, userID, "", "photo", fakeURL, replyTo)
+		msg, err = database.SendMessage(convID, userID, "", "photo", fakeURL, replyTo)
 	} else {
 		sendError(w, http.StatusUnsupportedMediaType, "Content-Type not supported")
 		return
@@ -276,15 +276,15 @@ func ForwardMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := service.ForwardMessage(vars["messageId"], req.TargetConversationID, userID)
+	err := database.ForwardMessage(vars["messageId"], req.TargetConversationID, userID)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// API.yaml dice che ritorna il messaggio creato, ma service.ForwardMessage
+	// API.yaml dice che ritorna il messaggio creato, ma database.ForwardMessage
 	// nel repository.go precedente ritornava solo error.
-	// Per coerenza con repository.go, ritorniamo un placeholder o modifichiamo il service.
+	// Per coerenza con repository.go, ritorniamo un placeholder o modifichiamo il database.
 	// Qui assumiamo successo 201.
 	sendJSONResponse(w, http.StatusCreated, map[string]string{"status": "forwarded"})
 }
@@ -304,7 +304,7 @@ func CommentMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := service.CommentMessage(vars["messageId"], userID, req.Emoji); err != nil {
+	if err := database.CommentMessage(vars["messageId"], userID, req.Emoji); err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -322,7 +322,7 @@ func UncommentMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	vars := mux.Vars(r)
 
-	if err := service.UncommentMessage(vars["messageId"], userID); err != nil {
+	if err := database.UncommentMessage(vars["messageId"], userID); err != nil {
 		sendError(w, http.StatusNotFound, "Reaction not found")
 		return
 	}
@@ -339,7 +339,7 @@ func DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	vars := mux.Vars(r)
 
-	if err := service.DeleteMessage(vars["messageId"], userID); err != nil {
+	if err := database.DeleteMessage(vars["messageId"], userID); err != nil {
 		sendError(w, http.StatusForbidden, "Cannot delete message (not found or not yours)")
 		return
 	}
@@ -361,7 +361,7 @@ func AddToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := service.AddToGroup(vars["groupId"], req.UserID); err != nil {
+	if err := database.AddToGroup(vars["groupId"], req.UserID); err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -385,7 +385,7 @@ func LeaveGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := service.LeaveGroup(vars["groupId"], targetUser); err != nil {
+	if err := database.LeaveGroup(vars["groupId"], targetUser); err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -407,7 +407,7 @@ func SetGroupName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := service.SetGroupName(vars["groupId"], req.Name); err != nil {
+	if err := database.SetGroupName(vars["groupId"], req.Name); err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -433,7 +433,7 @@ func SetGroupPhoto(w http.ResponseWriter, r *http.Request) {
 
 	fakeURL := "http://localhost:3000/static/groups/" + vars["groupId"] + ".jpg"
 
-	if err := service.SetGroupPhoto(vars["groupId"], fakeURL); err != nil {
+	if err := database.SetGroupPhoto(vars["groupId"], fakeURL); err != nil {
 		sendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

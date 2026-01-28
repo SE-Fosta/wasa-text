@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 	"time"
-	"wasa-text/api"     // Assicurati che questo path corrisponda al tuo go.mod
-	"wasa-text/service"
+	"wasa-text/service/api"     // Assicurati che questo path corrisponda al tuo go.mod
+	"wasa-text/service/database"
 
 	"github.com/gorilla/mux"
 )
@@ -15,7 +15,7 @@ func main() {
 	// Modifica la stringa di connessione secondo il tuo setup MySQL locale o Docker
 	dsn := "root:password@tcp(127.0.0.1:3306)/wasatext?parseTime=true"
 
-	db, err := service.InitDatabase(dsn)
+	db, err := database.InitDatabase(dsn)
 	if err != nil {
 		log.Fatalf("Errore connessione DB: %v", err)
 	}

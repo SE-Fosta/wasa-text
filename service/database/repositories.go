@@ -1,4 +1,4 @@
-package service
+package database
 
 import (
 	"database/sql"
@@ -9,6 +9,12 @@ import (
 
 // Definiamo le struct di dominio che useremo per scambiare dati con l'API
 // Nota: Alcuni campi json corrispondono allo schema API
+
+type User struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+}
 
 type ConversationSummary struct {
 	ID           string    `json:"id"`

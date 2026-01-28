@@ -1,16 +1,13 @@
-import {createApp, reactive} from 'vue'
+import { createApp } from 'vue'
+import './style.css' // Importa il CSS globale
 import App from './App.vue'
-import router from './router'
-import axios from './services/axios.js';
-import ErrorMsg from './components/ErrorMsg.vue'
-import LoadingSpinner from './components/LoadingSpinner.vue'
+import router from './router' // Importa il router configurato nel passo precedente
 
-import './assets/dashboard.css'
-import './assets/main.css'
-
+// Crea l'applicazione Vue partendo dal componente root App.vue
 const app = createApp(App)
-app.config.globalProperties.$axios = axios;
-app.component("ErrorMsg", ErrorMsg);
-app.component("LoadingSpinner", LoadingSpinner);
+
+// Dice all'app di usare il router per la navigazione
 app.use(router)
+
+// Monta l'applicazione nel div con id="app" che si trova in index.html
 app.mount('#app')
