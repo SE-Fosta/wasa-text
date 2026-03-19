@@ -2,9 +2,9 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"strconv"
 	"time"
-	"errors"
 )
 
 type Message struct {
@@ -32,7 +32,7 @@ func (db *appdb) SendMessage(conversationID string, senderID string, messageType
 		INSERT INTO messages (conversation_id, sender_id, content, message_type, photo_url, reply_to) 
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		conversationID, senderID, content, messageType, photoURL, replyToVal)
-	
+
 	if err != nil {
 		return Message{}, err
 	}
@@ -82,5 +82,3 @@ func (db *appdb) DeleteMessage(messageID string, requestingUserID string) error 
 
 	return nil
 }
-
-

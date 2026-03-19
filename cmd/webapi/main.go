@@ -28,17 +28,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api"
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/database"
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/globaltime"
 	"github.com/ardanlabs/conf"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/sirupsen/logrus"
-	"math/rand"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 // main is the program entry point. The only purpose of this function is to call run() and set the exit code if there is
@@ -147,37 +148,37 @@ func run() error {
 
 	// Waiting for shutdown signal or POSIX signals
 	select {
-		case err := <-serverErrors:
-			// Non-recoverable server error
-			return fmt.Errorf("server error: %w", err)
+	case err := <-serverErrors:
+		// Non-recoverable server error
+		return fmt.Errorf("server error: %w", err)
 
-		case sig := <-shutdown:
-			logger.Infof("signal %v received, start shutdown", sig)
+	case sig := <-shutdown:
+		logger.Infof("signal %v received, start shutdown", sig)
 
-			// Asking API server to shut down and load shed.
-			err := apirouter.Close()
-			if err != nil {
-				logger.WithError(err).Warning("graceful shutdown of apirouter error")
-			}
+		// Asking API server to shut down and load shed.
+		err := apirouter.Close()
+		if err != nil {
+			logger.WithError(err).Warning("graceful shutdown of apirouter error")
+		}
 
-			// Give outstanding requests a deadline for completion.
-			ctx, cancel := context.WithTimeout(context.Background(), cfg.Web.ShutdownTimeout)
-			defer cancel()
+		// Give outstanding requests a deadline for completion.
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Web.ShutdownTimeout)
+		defer cancel()
 
-			// Asking listener to shut down and load shed.
-			err = apiserver.Shutdown(ctx)
-			if err != nil {
-				logger.WithError(err).Warning("error during graceful shutdown of HTTP server")
-				err = apiserver.Close()
-			}
+		// Asking listener to shut down and load shed.
+		err = apiserver.Shutdown(ctx)
+		if err != nil {
+			logger.WithError(err).Warning("error during graceful shutdown of HTTP server")
+			err = apiserver.Close()
+		}
 
-			// Log the status of this shutdown.
-			switch {
-				case sig == syscall.SIGSTOP:
-					return errors.New("integrity issue caused shutdown")
-				case err != nil:
-					return fmt.Errorf("could not stop server gracefully: %w", err)
-			}
+		// Log the status of this shutdown.
+		switch {
+		case sig == syscall.SIGSTOP:
+			return errors.New("integrity issue caused shutdown")
+		case err != nil:
+			return fmt.Errorf("could not stop server gracefully: %w", err)
+		}
 	}
 
 	return nil

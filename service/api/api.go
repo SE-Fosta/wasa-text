@@ -66,7 +66,7 @@ func New(cfg Config) (Router, error) {
 	return rt, nil
 }
 
-// Close terminates any resource used in the package
+// Termina ogni risorsa usata nel package
 func (rt *_router) Close() error {
 	// Se hai risorse da chiudere nel database, puoi chiamarle qui.
 	// Esempio: return rt.db.Close() se il tuo AppDatabase espone un metodo Close()

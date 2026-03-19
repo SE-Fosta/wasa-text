@@ -15,7 +15,7 @@ type User struct {
 func (db *appdb) DoLogin(username string) (string, error) {
 	var idInt int64
 	err := db.c.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&idInt)
-	
+
 	if errors.Is(err, sql.ErrNoRows) {
 		// Utente non esiste, lo inseriamo
 		res, err := db.c.Exec("INSERT INTO users (username) VALUES (?)", username)

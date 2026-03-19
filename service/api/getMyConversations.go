@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
-	"github.com/julienschmidt/httprouter"
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/database" // Importa il DB se serve per i tipi
+	"github.com/julienschmidt/httprouter"
 )
 
 // getMyConversations gestisce l'endpoint GET /users/:userId/conversations

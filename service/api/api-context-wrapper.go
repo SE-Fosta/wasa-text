@@ -48,7 +48,7 @@ func (rt *_router) wrapAuth(fn httpRouterHandler) func(http.ResponseWriter, *htt
 			http.Error(w, `{"message": "Invalid User ID"}`, http.StatusUnauthorized)
 			return
 		}
-		ctx.UserID = userIDStr 
+		ctx.UserID = userIDStr
 
 		// Logger specifico per la richiesta (includiamo anche l'ID utente)
 		ctx.Logger = rt.baseLogger.WithFields(logrus.Fields{
@@ -57,7 +57,7 @@ func (rt *_router) wrapAuth(fn httpRouterHandler) func(http.ResponseWriter, *htt
 			"user-id":   ctx.UserID,
 		})
 
-		// Opzionale: se vuoi anche verificare a DB che l'utente esista, 
+		// Opzionale: se vuoi anche verificare a DB che l'utente esista,
 		// puoi chiamare rt.db.CheckUserExists(ctx.UserID) qui.
 		// Altrimenti, ci penseranno le foreign keys del database a dare errore!
 
