@@ -13,6 +13,8 @@ func applyCORSHandler(h http.Handler) http.Handler {
 	return handlers.CORS(
 		handlers.AllowedHeaders([]string{
 			"x-example-header",
+			"Authorization", // <-- Aggiunto per permettere il nostro Bearer token!
+			"Content-Type",  // <-- Aggiunto per permettere ad Axios di inviare i JSON!
 		}),
 		handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS", "DELETE", "PUT"}),
 		// Do not modify the CORS origin and max age, they are used in the evaluation.

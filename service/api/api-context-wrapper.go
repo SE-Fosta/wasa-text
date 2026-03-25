@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
 	"github.com/gofrs/uuid"
@@ -12,8 +11,7 @@ import (
 
 type httpRouterHandler func(http.ResponseWriter, *http.Request, httprouter.Params, reqcontext.RequestContext)
 
-// wrapAuth fa il parsing della richiesta E controlla l'autenticazione Bearer.
-// Da usare per TUTTE le rotte tranne il login.
+// wrapAuth ORA È LIBERO: non controlla più "Bearer", prende solo l'ID utente!
 func (rt *_router) wrapAuth(fn httpRouterHandler) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		reqUUID, err := uuid.NewV4()
@@ -26,47 +24,21 @@ func (rt *_router) wrapAuth(fn httpRouterHandler) func(http.ResponseWriter, *htt
 			ReqUUID: reqUUID,
 		}
 
-		// === Authorization check ===
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			rt.baseLogger.Warn("Missing Authorization header")
-			http.Error(w, `{"message": "Missing Authorization"}`, http.StatusUnauthorized)
-			return
-		}
+		// Leggiamo l'header Authorization in modo grezzo e lo usiamo come ID utente.
+		// Niente più controlli "Bearer" o errori se è vuoto!
+		ctx.UserID = r.Header.Get("Authorization")
 
-		const bearerPrefix = "Bearer "
-		if !strings.HasPrefix(authHeader, bearerPrefix) {
-			rt.baseLogger.Warn("Invalid Authorization header format")
-			http.Error(w, `{"message": "Invalid Authorization Format"}`, http.StatusUnauthorized)
-			return
-		}
-
-		// Estraiamo l'ID utente (stringa) e lo mettiamo nel contesto
-		userIDStr := strings.TrimPrefix(authHeader, bearerPrefix)
-		if userIDStr == "" {
-			rt.baseLogger.Warn("Empty Bearer token")
-			http.Error(w, `{"message": "Invalid User ID"}`, http.StatusUnauthorized)
-			return
-		}
-		ctx.UserID = userIDStr
-
-		// Logger specifico per la richiesta (includiamo anche l'ID utente)
 		ctx.Logger = rt.baseLogger.WithFields(logrus.Fields{
 			"reqid":     ctx.ReqUUID.String(),
 			"remote-ip": r.RemoteAddr,
 			"user-id":   ctx.UserID,
 		})
 
-		// Opzionale: se vuoi anche verificare a DB che l'utente esista,
-		// puoi chiamare rt.db.CheckUserExists(ctx.UserID) qui.
-		// Altrimenti, ci penseranno le foreign keys del database a dare errore!
-
 		fn(w, r, ps, ctx)
 	}
 }
 
-// wrap fa SOLO il parsing del logger e UUID, NON controlla l'autenticazione.
-// Da usare ESCLUSIVAMENTE per la rotta di Login (/session).
+// wrap rimane usato per il Login (che non ha proprio l'ID utente)
 func (rt *_router) wrap(fn httpRouterHandler) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		reqUUID, err := uuid.NewV4()
