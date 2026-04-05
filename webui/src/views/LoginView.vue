@@ -7,7 +7,7 @@
       <input 
         type="text" 
         v-model="username" 
-        placeholder="Es: SuperMario" 
+        placeholder="Es: Mario" 
         required 
         minlength="3" 
         maxlength="16"
@@ -38,11 +38,13 @@ const handleLogin = async () => {
       name: username.value
     });
 
+
     // Il backend ci restituisce l'ID utente (es. "1" o 1)
     const token = response.data.identifier;
 
     // Salviamo l'ID nel browser
     localStorage.setItem('token', token);
+    localStorage.setItem('username', username.value);
 
     // Andiamo alla Home
     router.push('/');
