@@ -14,6 +14,7 @@ type AppDatabase interface {
 	DoLogin(username string) (string, error)
 	SetMyUserName(userID string, newName string) error
 	SetMyPhoto(userID string, photoURL string) error
+	GetUsers(searchQuery string) ([]User, error)
 
 	// -- Conversazioni --
 	GetMyConversations(userID string) ([]ConversationSummary, error)

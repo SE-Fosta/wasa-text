@@ -50,3 +50,42 @@ func (db *appdb) SetMyPhoto(userID string, photoURL string) error {
 	_, err := db.c.Exec("UPDATE users SET photo_url = ? WHERE id = ?", photoURL, userID)
 	return err
 }
+func (db *appdb) GetUsers(searchQuery string) ([]User, error) {
+	var rows *sql.Rows
+	var err error
+
+	// Usiamo CAST per convertire l'INTEGER in stringa
+	// Usiamo COALESCE per evitare i NULL e restituire "" se non c'è foto
+	if searchQuery != "" {
+		query := `SELECT CAST(id AS TEXT), username, COALESCE(photo_url, '') FROM users WHERE username LIKE ?`
+		rows, err = db.c.Query(query, "%"+searchQuery+"%")
+	} else {
+		query := `SELECT CAST(id AS TEXT), username, COALESCE(photo_url, '') FROM users`
+		rows, err = db.c.Query(query)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		// ATTENZIONE: Qui usiamo u.PhotoURL con "URL" maiuscolo, esattamente come nella tua struct!
+		if err := rows.Scan(&u.ID, &u.Username, &u.PhotoURL); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if users == nil {
+		users = make([]User, 0)
+	}
+
+	return users, nil
+}

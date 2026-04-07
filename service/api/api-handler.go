@@ -39,6 +39,7 @@ func (rt *_router) Handler() http.Handler {
 	// Da qui in poi, TUTTE le rotte usano wrapAuth() per controllare il Bearer Token
 	rt.router.PUT("/users/:userId/username", rt.wrapAuth(rt.setMyUserName))
 	rt.router.PUT("/users/:userId/photo", rt.wrapAuth(rt.setMyPhoto))
+	rt.router.GET("/users", rt.wrapAuth(rt.getUsers))
 
 	// -- Conversazioni --
 	rt.router.GET("/users/:userId/conversations", rt.wrapAuth(rt.getMyConversations))
