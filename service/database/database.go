@@ -19,6 +19,7 @@ type AppDatabase interface {
 	// -- Conversazioni --
 	GetMyConversations(userID string) ([]ConversationSummary, error)
 	GetConversation(conversationID string, requestingUserID string) (Conversation, error)
+	CreateConversation(creatorID string, targetUserID string) (string, error)
 
 	// -- Messaggi --
 	SendMessage(conversationID string, senderID string, messageType string, content string, photoURL string, replyTo string) (Message, error)
@@ -26,6 +27,8 @@ type AppDatabase interface {
 	DeleteMessage(messageID string, requestingUserID string) error
 	CommentMessage(messageID string, userID string, emoji string) error
 	UncommentMessage(messageID string, userID string) error
+	GetMessages(conversationID string) ([]Message, error)
+	MarkAsRead(conversationID string, userID string) error
 
 	// -- Gruppi --
 	AddToGroup(groupID string, userIDToAdd string) error
@@ -55,20 +58,20 @@ func New(db *sql.DB) (AppDatabase, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		// Creazione tabelle con AUTOINCREMENT per gli ID
 		sqlStmt := `
-		CREATE TABLE users (
+		CREATE TABLE IF NOT EXISTS users (
 			id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			username TEXT NOT NULL UNIQUE,
 			photo_url TEXT
 		);
 
-		CREATE TABLE conversations (
+		CREATE TABLE IF NOT EXISTS conversations (
 			id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			is_group BOOLEAN NOT NULL DEFAULT 0,
 			name TEXT,
 			photo_url TEXT
 		);
 
-		CREATE TABLE conversation_members (
+		CREATE TABLE IF NOT EXISTS conversation_members (
 			conversation_id INTEGER NOT NULL,
 			user_id INTEGER NOT NULL,
 			PRIMARY KEY (conversation_id, user_id),
@@ -76,7 +79,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 
-		CREATE TABLE messages (
+		CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			conversation_id INTEGER NOT NULL,
 			sender_id INTEGER NOT NULL,
@@ -89,7 +92,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 			FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 
-		CREATE TABLE message_status (
+		CREATE TABLE IF NOT EXISTS message_status (
 			message_id INTEGER NOT NULL,
 			user_id INTEGER NOT NULL,
 			delivered BOOLEAN DEFAULT 0,
@@ -99,7 +102,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 
-		CREATE TABLE reactions (
+		CREATE TABLE IF NOT EXISTS reactions (
 			message_id INTEGER NOT NULL,
 			user_id INTEGER NOT NULL,
 			emoji TEXT NOT NULL,

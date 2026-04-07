@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -36,8 +38,23 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		}
 		defer file.Close()
 
-		// In un'app reale qui salvi il file. Per ora generiamo un URL fittizio.
-		photoURL = "/photos/fake_message_photo.jpg"
+		// LEGGAMO IL FILE FISICO E LO TRASFORMIAMO IN BASE64
+		fileBytes, err := io.ReadAll(file)
+		if err != nil {
+			ctx.Logger.WithError(err).Error("Errore nella lettura del file immagine")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "Error reading photo"})
+			return
+		}
+
+		// Capiamo se è un jpeg, un png, ecc...
+		mimeType := http.DetectContentType(fileBytes)
+
+		// Convertiamo in stringa Base64
+		base64Encoding := base64.StdEncoding.EncodeToString(fileBytes)
+
+		// Creiamo l'URL speciale "data:image/..." che Vue sa leggere nativamente
+		photoURL = "data:" + mimeType + ";base64," + base64Encoding
 
 	} else {
 		// --- Caso 2: Invio Testo JSON ---

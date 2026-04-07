@@ -3,7 +3,7 @@
     <h1>WASAText</h1>
     <p>Inserisci il tuo username per iniziare a chattare</p>
     
-    <form @submit.prevent="handleLogin">
+    <form @submit.prevent="doLogin">
       <input 
         type="text" 
         v-model="username" 
@@ -29,7 +29,7 @@ const username = ref('');
 const errorMessage = ref('');
 const router = useRouter();
 
-const handleLogin = async () => {
+const doLogin = async () => {
   errorMessage.value = '';
 
   try {

@@ -12,17 +12,20 @@ import (
 func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	messageID := ps.ByName("messageId")
 
-	// Passiamo ctx.UserID: il database si occuperà di verificare che
-	// la riga appartenga effettivamente a lui prima di eliminarla.
 	err := rt.db.DeleteMessage(messageID, ctx.UserID)
 	if err != nil {
-		ctx.Logger.WithError(err).Warn("Attempt to delete message failed (not found or forbidden)")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Message not found or you are not the sender"})
+		// Se è l'errore specifico che hai creato tu nel database
+		if err.Error() == "message not found or forbidden" {
+			ctx.Logger.WithError(err).Warn("Attempt to delete message failed (not found or forbidden)")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden) // 403
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "Message not found or you are not the sender"})
+			return
+		}
+
+		// Se è un VERO errore del database (es. connessione persa)
+		ctx.Logger.WithError(err).Error("Errore interno del database")
+		w.WriteHeader(http.StatusInternalServerError) // 500
 		return
 	}
-
-	// 204 No Content in caso di successo
-	w.WriteHeader(http.StatusNoContent)
 }

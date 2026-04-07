@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 )
@@ -22,30 +23,51 @@ type Message struct {
 }
 
 func (db *appdb) SendMessage(conversationID string, senderID string, messageType string, content string, photoURL string, replyTo string) (Message, error) {
-	// Utilizziamo NULL per replyTo se la stringa è vuota
+	// 1. Gestione del ReplyTo (NULL se vuoto)
 	var replyToVal interface{} = replyTo
 	if replyTo == "" {
 		replyToVal = nil
 	}
 
+	// 2. Inserimento del messaggio nella tabella principale
 	res, err := db.c.Exec(`
-		INSERT INTO messages (conversation_id, sender_id, content, message_type, photo_url, reply_to) 
-		VALUES (?, ?, ?, ?, ?, ?)`,
+        INSERT INTO messages (conversation_id, sender_id, content, message_type, photo_url, reply_to) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
 		conversationID, senderID, content, messageType, photoURL, replyToVal)
 
 	if err != nil {
 		return Message{}, err
 	}
 
-	idInt, _ := res.LastInsertId()
-	msgID := strconv.FormatInt(idInt, 10)
+	// 3. Recupero l'ID del messaggio appena creato
+	lastID, _ := res.LastInsertId()
+	// Lo teniamo come int64 per il database, ma lo convertiamo in string per la struct
+	msgIDStr := strconv.FormatInt(lastID, 10)
 
+	// 4. LOGICA DELLE SPUNTE: Creiamo le righe di "stato" per gli ALTRI membri
+	// Inseriamo una riga in message_status per ogni membro della chat che NON è il mittente
+	_, err = db.c.Exec(`
+        INSERT INTO message_status (message_id, user_id, delivered, read)
+        SELECT ?, user_id, 0, 0 
+        FROM conversation_members 
+        WHERE conversation_id = ? AND user_id != ?`,
+		lastID, conversationID, senderID)
+
+	if err != nil {
+		// Se fallisce qui, meglio loggare l'errore ma non bloccare l'invio del messaggio
+		fmt.Printf("Errore creazione message_status: %v\n", err)
+	}
+
+	// 5. Restituisco l'oggetto Message completo per il frontend
 	return Message{
-		ID:          msgID,
+		ID:          msgIDStr,
 		Content:     content,
 		MessageType: messageType,
 		SenderID:    senderID,
+		PhotoURL:    photoURL,
 		Timestamp:   time.Now(),
+		Delivered:   false,
+		Read:        false,
 	}, nil
 }
 
@@ -80,5 +102,91 @@ func (db *appdb) DeleteMessage(messageID string, requestingUserID string) error 
 		return errors.New("message not found or forbidden")
 	}
 
+	return nil
+}
+
+// GetMessages estrae tutti i messaggi di una specifica conversazione
+func (db *appdb) GetMessages(conversationID string) ([]Message, error) {
+	// 1. Aggiungiamo ms.delivered e ms.read alla SELECT
+	// 2. Usiamo LEFT JOIN su message_status per non perdere i messaggi se lo stato manca
+	query := `
+		SELECT 
+			m.id, m.content, m.message_type, m.timestamp, m.sender_id, 
+			u.username as sender_name, m.reply_to, m.photo_url,
+			COALESCE(ms.delivered, 0), 
+			COALESCE(ms.read, 0)
+		FROM messages m
+		INNER JOIN users u ON m.sender_id = u.id
+		-- La JOIN deve prendere lo stato dell'altro utente, non il mio!
+		LEFT JOIN message_status ms ON m.id = ms.message_id AND ms.user_id != m.sender_id
+		WHERE m.conversation_id = ?
+		ORDER BY m.timestamp ASC
+	`
+
+	rows, err := db.c.Query(query, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var m Message
+		var content, replyTo, photoURL sql.NullString
+
+		// Aggiungiamo &m.Delivered e &m.Read allo Scan
+		// IMPORTANTE: L'ordine deve corrispondere esattamente alla SELECT sopra
+		err := rows.Scan(
+			&m.ID,
+			&content,
+			&m.MessageType,
+			&m.Timestamp,
+			&m.SenderID,
+			&m.SenderName,
+			&replyTo,
+			&photoURL,
+			&m.Delivered,
+			&m.Read,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Mantieni tutte le tue logiche esistenti per i campi Null
+		if content.Valid {
+			m.Content = content.String
+		}
+		if replyTo.Valid {
+			m.ReplyTo = replyTo.String
+		}
+		if photoURL.Valid {
+			m.PhotoURL = photoURL.String
+		}
+
+		messages = append(messages, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return messages, nil
+}
+func (db *appdb) MarkAsRead(conversationID string, userID string) error {
+	// Questa query aggiorna lo stato per l'utente corrente
+	// su tutti i messaggi di quella conversazione che non ha ancora letto
+	query := `
+        UPDATE message_status 
+        SET read = 1, delivered = 1 
+        WHERE user_id = ? 
+        AND message_id IN (
+            SELECT id FROM messages WHERE conversation_id = ? AND sender_id != ?
+        )`
+
+	_, err := db.c.Exec(query, userID, conversationID, userID)
+	if err != nil {
+		fmt.Printf("--- ERRORE SQL MarkAsRead: %v ---\n", err)
+		return err
+	}
 	return nil
 }

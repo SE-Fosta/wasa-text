@@ -44,11 +44,14 @@ func (rt *_router) Handler() http.Handler {
 	// -- Conversazioni --
 	rt.router.GET("/users/:userId/conversations", rt.wrapAuth(rt.getMyConversations))
 	rt.router.GET("/conversations/:conversationId", rt.wrapAuth(rt.getConversation))
+	rt.router.POST("/users/:userId/conversations", rt.wrapAuth(rt.createConversation))
 
 	// -- Messaggi --
 	rt.router.POST("/conversations/:conversationId/messages", rt.wrapAuth(rt.sendMessage))
 	rt.router.POST("/messages/:messageId/forward", rt.wrapAuth(rt.forwardMessage))
 	rt.router.DELETE("/messages/:messageId", rt.wrapAuth(rt.deleteMessage))
+	rt.router.GET("/conversations/:conversationId/messages", rt.wrapAuth(rt.getMessages))
+	rt.router.PUT("/conversations/:conversationId/read", rt.wrapAuth(rt.markAsRead))
 
 	// -- Reazioni (Commenti) --
 	rt.router.POST("/messages/:messageId/comments", rt.wrapAuth(rt.commentMessage))
