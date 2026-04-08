@@ -34,30 +34,51 @@ type Conversation struct {
 }
 
 func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error) {
-	// Query base: recupera le conversazioni di cui l'utente fa parte.
-	// Se è un gruppo prende il nome, se è 1-a-1 pesca lo username dell'altra persona!
+	// Abbiamo trasformato la query per usare delle JOIN molto più efficienti
+	// e abbiamo aggiunto il calcolo dei messaggi non letti (UnreadCount)
 	query := `
-		SELECT 
-			c.id, 
-			CASE 
-				WHEN c.is_group = 1 THEN c.name 
-				ELSE (
-					SELECT u.username 
-					FROM conversation_members m 
-					INNER JOIN users u ON m.user_id = u.id 
-					WHERE m.conversation_id = c.id AND u.id != ?
-				) 
-			END as chat_name,
-			c.photo_url, 
-			c.is_group
-		FROM conversations c
-		INNER JOIN conversation_members cm ON c.id = cm.conversation_id
-		WHERE cm.user_id = ?
-		AND EXISTS (SELECT 1 FROM messages msg WHERE msg.conversation_id = c.id)
-	`
+        SELECT 
+            c.id, 
+            CASE 
+                WHEN c.is_group = 1 THEN c.name 
+                ELSE (
+                    SELECT u.username 
+                    FROM conversation_members m 
+                    INNER JOIN users u ON m.user_id = u.id 
+                    WHERE m.conversation_id = c.id AND u.id != ?
+                ) 
+            END as chat_name,
+            c.photo_url, 
+            c.is_group,
+            lm.content as last_msg_content,
+            lm.message_type as last_msg_type,
+            lu.username as last_msg_sender,
+            lm.timestamp as last_timestamp,
+            (
+                SELECT COUNT(*) 
+                FROM message_status ms 
+                INNER JOIN messages m ON ms.message_id = m.id 
+                WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.read = 0
+            ) as unread_count
+        FROM conversations c
+        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+        -- Trucco SQL: Troviamo l'ID del messaggio più recente per ogni conversazione
+        LEFT JOIN (
+            SELECT conversation_id, MAX(id) as max_msg_id
+            FROM messages
+            GROUP BY conversation_id
+        ) as latest_msg ON c.id = latest_msg.conversation_id
+        -- Uniamo i dettagli di quell'ultimo messaggio
+        LEFT JOIN messages lm ON latest_msg.max_msg_id = lm.id
+        -- Uniamo l'utente che ha inviato l'ultimo messaggio (per il SenderName)
+        LEFT JOIN users lu ON lm.sender_id = lu.id
+        WHERE cm.user_id = ?
+        AND latest_msg.max_msg_id IS NOT NULL -- Esclude le chat vuote
+        ORDER BY last_timestamp DESC
+    `
 
-	// ATTENZIONE QUI: passiamo userID due volte perché ci sono due '?' nella query!
-	rows, err := db.c.Query(query, userID, userID)
+	// ATTENZIONE: Ora ci sono tre '?' nella query, quindi passiamo userID 3 volte!
+	rows, err := db.c.Query(query, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -66,27 +87,63 @@ func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error
 	var summaries []ConversationSummary
 	for rows.Next() {
 		var s ConversationSummary
-		var photoURL, name sql.NullString
 		var idInt int64
 
-		if err := rows.Scan(&idInt, &name, &photoURL, &s.IsGroup); err != nil {
+		// Prepariamo le variabili "sicure" per i dati che potrebbero essere nulli
+		var name, photoURL, lastMsgContent, lastMsgType, lastMsgSender sql.NullString
+		var lastTimestamp sql.NullTime
+		var unreadCount int
+
+		// L'ordine DEVE essere identico alla SELECT in alto
+		err := rows.Scan(
+			&idInt,
+			&name,
+			&photoURL,
+			&s.IsGroup,
+			&lastMsgContent,
+			&lastMsgType,
+			&lastMsgSender,
+			&lastTimestamp,
+			&unreadCount,
+		)
+		if err != nil {
 			return nil, err
 		}
 
-		// Convertiamo l'ID intero in stringa
+		// Assegnazioni Base
 		s.ID = strconv.FormatInt(idInt, 10)
-
-		if photoURL.Valid {
-			s.PhotoURL = photoURL.String
-		}
-
-		// Salviamo il nome magico appena calcolato da SQLite
 		if name.Valid {
 			s.Name = name.String
 		}
+		if photoURL.Valid {
+			s.PhotoURL = photoURL.String
+		}
+		s.UnreadCount = unreadCount
 
-		// Impostiamo un timestamp fittizio finché non implementi la JOIN per i messaggi
-		s.LastActivity = time.Now()
+		// --- POPOLIAMO LA NUOVA STRUCT ANNIDATA (MessagePreview) ---
+		s.LastMessage = MessagePreview{}
+
+		if lastMsgContent.Valid && lastMsgContent.String != "" {
+			s.LastMessage.Content = lastMsgContent.String
+		} else {
+			s.LastMessage.Content = "📷 Foto" // Testo di fallback se è una foto
+		}
+
+		if lastMsgType.Valid {
+			s.LastMessage.MessageType = lastMsgType.String
+		}
+
+		if lastMsgSender.Valid {
+			s.LastMessage.SenderName = lastMsgSender.String
+		}
+
+		// Gestione Timestamp
+		if lastTimestamp.Valid {
+			s.LastActivity = lastTimestamp.Time
+		} else {
+			s.LastActivity = time.Now()
+		}
+
 		summaries = append(summaries, s)
 	}
 
@@ -203,6 +260,7 @@ func (db *appdb) GetConversation(conversationID string, requestingUserID string)
 }
 func (db *appdb) CreateConversation(creatorID string, targetUserID string) (string, error) {
 	// 1. Controlliamo se esiste già una chat 1-a-1 tra questi due utenti
+	fmt.Printf("Tentativo creazione chat: Creator=[%s], Target=[%s]\n", creatorID, targetUserID)
 	checkQuery := `
 		SELECT c.id FROM conversations c
 		JOIN conversation_members m1 ON c.id = m1.conversation_id
@@ -240,4 +298,44 @@ func (db *appdb) CreateConversation(creatorID string, targetUserID string) (stri
 	}
 
 	return fmt.Sprintf("%d", convID), nil
+}
+
+func (db *appdb) AddToGroup(groupID string, userIDToAdd string) error {
+	// 1. Controlliamo esplicitamente: l'utente c'è già?
+	var exists bool
+	err := db.c.QueryRow(`
+        SELECT EXISTS(
+            SELECT 1 FROM conversation_members 
+            WHERE conversation_id = ? AND user_id = ?
+        )`, groupID, userIDToAdd).Scan(&exists)
+
+	if err != nil {
+		return err // Vero guasto del DB
+	}
+
+	if exists {
+		// L'utente c'è già! Segnaliamo all'API di fermarsi.
+		return errors.New("user is already in the group")
+	}
+
+	// 2. Se non c'è, procediamo con l'inserimento normale
+	_, err = db.c.Exec("INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)", groupID, userIDToAdd)
+	return err
+}
+
+func (db *appdb) LeaveGroup(groupID string, userIDToRemove string) error {
+	// Rimuoviamo il record dalla tabella dei membri
+	_, err := db.c.Exec("DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?", groupID, userIDToRemove)
+	return err
+}
+
+func (db *appdb) SetGroupName(groupID string, newName string) error {
+	// Aggiorniamo il nome nella tabella conversations
+	_, err := db.c.Exec("UPDATE conversations SET name = ? WHERE id = ?", newName, groupID)
+	return err
+}
+
+func (db *appdb) SetGroupPhoto(groupID string, photoURL string) error {
+	_, err := db.c.Exec("UPDATE conversations SET photo_url = ? WHERE id = ?", photoURL, groupID)
+	return err
 }

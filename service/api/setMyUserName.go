@@ -10,10 +10,10 @@ import (
 
 // setMyUserName gestisce l'endpoint PUT /users/:userId/username
 func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// 1. Leggiamo l'ID bersaglio dall'URL
+	// 1. Leggiamo l'ID bersaglio
 	targetUserID := ps.ByName("userId")
 
-	// 2. Controllo Autorizzazione: l'utente loggato (ctx.UserID) coincide con l'ID nell'URL?
+	// 2. Controllo Autorizzazione
 	if ctx.UserID != targetUserID {
 		ctx.Logger.Warn("User tried to change someone else's username")
 		w.Header().Set("Content-Type", "application/json")
@@ -22,9 +22,9 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
-	// 3. Facciamo il parsing del JSON in ingresso
+	// 3. Parsing del JSON: ORA CERCHIAMO "username"
 	var req struct {
-		Name string `json:"name"`
+		Username string `json:"username"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -34,7 +34,7 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 	}
 
 	// 4. Validazione lunghezza nome
-	if len(req.Name) < 3 || len(req.Name) > 16 {
+	if len(req.Username) < 3 || len(req.Username) > 16 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Username must be between 3 and 16 characters"})
@@ -42,12 +42,11 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 	}
 
 	// 5. Aggiorniamo il database
-	err := rt.db.SetMyUserName(ctx.UserID, req.Name)
+	err := rt.db.SetMyUserName(ctx.UserID, req.Username)
 	if err != nil {
-		// Se il nome è già preso, SQLite restituirà un errore UNIQUE constraint
 		ctx.Logger.WithError(err).Error("setMyUserName error")
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict) // 409 Conflict se il nome è in uso
+		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Username already taken or invalid"})
 		return
 	}

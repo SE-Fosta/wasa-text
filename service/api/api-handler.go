@@ -26,6 +26,7 @@ func (rt *_router) Handler() http.Handler {
 	// -------------------------------------------------------------------------
 	rt.router.GET("/context", rt.wrap(rt.getContextReply))
 	rt.router.GET("/liveness", rt.liveness)
+	rt.router.ServeFiles("/uploads/*filepath", http.Dir("./uploads"))
 
 	// -------------------------------------------------------------------------
 	// Registrazione delle rotte WASAText
@@ -52,10 +53,10 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.DELETE("/messages/:messageId", rt.wrapAuth(rt.deleteMessage))
 	rt.router.GET("/conversations/:conversationId/messages", rt.wrapAuth(rt.getMessages))
 	rt.router.PUT("/conversations/:conversationId/read", rt.wrapAuth(rt.markAsRead))
-
-	// -- Reazioni (Commenti) --
-	rt.router.POST("/messages/:messageId/comments", rt.wrapAuth(rt.commentMessage))
-	rt.router.DELETE("/messages/:messageId/comments", rt.wrapAuth(rt.uncommentMessage))
+	rt.router.POST("/messages/:messageId/reactions", rt.wrapAuth(rt.reactMessage))
+	rt.router.DELETE("/messages/:messageId/reactions", rt.wrapAuth(rt.unReactMessage))
+	rt.router.POST("/messages/:messageId/comments", rt.wrap(rt.commentMessage))
+	rt.router.DELETE("/messages/:messageId/comments/:commentId", rt.wrap(rt.uncommentMessage))
 
 	// -- Gruppi --
 	rt.router.POST("/groups/:groupId/members", rt.wrapAuth(rt.addToGroup))

@@ -11,26 +11,21 @@ import (
 // forwardMessage gestisce l'endpoint POST /messages/:messageId/forward
 func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	messageID := ps.ByName("messageId")
+	senderID := ctx.UserID // Assicurati che questo sia il modo in cui recuperi l'ID dell'utente nel tuo contesto
 
-	var req struct {
+	var reqBody struct {
 		TargetConversationID string `json:"targetConversationId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Invalid JSON body"})
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Chiamata al database passando ctx.UserID (così il DB sa chi risulta come mittente dell'inoltro)
-	msg, err := rt.db.ForwardMessage(messageID, req.TargetConversationID, ctx.UserID)
+	_, err := rt.db.ForwardMessage(messageID, reqBody.TargetConversationID, senderID)
 	if err != nil {
-		ctx.Logger.WithError(err).Error("forwardMessage error")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Error forwarding message"})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(msg)
 }

@@ -12,6 +12,7 @@ import (
 func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	groupID := ps.ByName("groupId")
 
+	// 1. Parsing del JSON
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -22,22 +23,24 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
-	if len(req.Name) < 3 {
+	// 2. Validazione minima (es. nome non vuoto e non troppo lungo)
+	if len(req.Name) < 3 || len(req.Name) > 30 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Group name is too short"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Il nome deve essere tra 3 e 30 caratteri"})
 		return
 	}
 
-	// Chiamata al database (idealmente il DB verifica anche che ctx.UserID faccia parte del gruppo)
+	// 3. Chiamata al Database
 	err := rt.db.SetGroupName(groupID, req.Name)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("setGroupName error")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Error changing group name"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Errore durante l'aggiornamento del nome"})
 		return
 	}
 
+	// 4. Successo: 204 No Content
 	w.WriteHeader(http.StatusNoContent)
 }

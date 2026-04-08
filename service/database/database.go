@@ -15,6 +15,7 @@ type AppDatabase interface {
 	SetMyUserName(userID string, newName string) error
 	SetMyPhoto(userID string, photoURL string) error
 	GetUsers(searchQuery string) ([]User, error)
+	GetUser(userID string) (User, error)
 
 	// -- Conversazioni --
 	GetMyConversations(userID string) ([]ConversationSummary, error)
@@ -25,10 +26,12 @@ type AppDatabase interface {
 	SendMessage(conversationID string, senderID string, messageType string, content string, photoURL string, replyTo string) (Message, error)
 	ForwardMessage(messageID string, targetConversationID string, senderID string) (Message, error)
 	DeleteMessage(messageID string, requestingUserID string) error
-	CommentMessage(messageID string, userID string, emoji string) error
-	UncommentMessage(messageID string, userID string) error
+	ReactMessage(messageID string, userID string, emoji string) error
+	UnreactMessage(messageID string, userID string) error
 	GetMessages(conversationID string) ([]Message, error)
 	MarkAsRead(conversationID string, userID string) error
+	CommentMessage(originalMessageID string, senderID string, content string) (Message, error)
+	UncommentMessage(commentID string, requestingUserID string) error
 
 	// -- Gruppi --
 	AddToGroup(groupID string, userIDToAdd string) error

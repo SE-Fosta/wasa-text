@@ -2,7 +2,7 @@ package api
 
 import (
 	"net/http"
-	"strings" // <-- AGGIUNGI QUESTA LIBRERIA PER MANIPOLARE LE STRINGHE
+	"strings"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
 	"github.com/gofrs/uuid"

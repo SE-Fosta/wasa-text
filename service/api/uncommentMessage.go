@@ -8,16 +8,15 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// uncommentMessage gestisce l'endpoint DELETE /messages/:messageId/comments
 func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	messageID := ps.ByName("messageId")
+	// Ci serve l'ID del commento specifico da eliminare
+	commentID := ps.ByName("commentId")
 
-	// Passiamo ID messaggio e ID utente: cancelliamo solo la TUA reazione
-	err := rt.db.UncommentMessage(messageID, ctx.UserID)
+	err := rt.db.UncommentMessage(commentID, ctx.UserID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("uncommentMessage error")
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Error removing reaction"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Error deleting comment"})
 		return
 	}
 

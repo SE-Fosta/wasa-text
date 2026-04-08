@@ -22,6 +22,11 @@ type Message struct {
 	PhotoURL    string     `json:"photoUrl,omitempty"`
 }
 
+type Reaction struct {
+	UserID string `json:"userId"`
+	Emoji  string `json:"emoji"`
+}
+
 func (db *appdb) SendMessage(conversationID string, senderID string, messageType string, content string, photoURL string, replyTo string) (Message, error) {
 	// 1. Gestione del ReplyTo (NULL se vuoto)
 	var replyToVal interface{} = replyTo
@@ -72,8 +77,9 @@ func (db *appdb) SendMessage(conversationID string, senderID string, messageType
 }
 
 func (db *appdb) ForwardMessage(messageID string, targetConversationID string, senderID string) (Message, error) {
-	var content, msgType string
-	var photoURL sql.NullString
+	var msgType string
+	// Usiamo sql.NullString anche per il content, per evitare crash se si inoltra una foto senza testo
+	var content, photoURL sql.NullString
 
 	// 1. Recuperiamo il contenuto e il tipo del messaggio originale
 	err := db.c.QueryRow("SELECT content, message_type, photo_url FROM messages WHERE id = ?", messageID).
@@ -82,10 +88,22 @@ func (db *appdb) ForwardMessage(messageID string, targetConversationID string, s
 		return Message{}, err
 	}
 
-	// 2. Usiamo SendMessage per inserire il nuovo messaggio
-	// Passiamo una stringa vuota per replyTo poiché è un inoltro
-	return db.SendMessage(targetConversationID, senderID, msgType, content, photoURL.String, "")
+	// 2. Estraiamo i valori sicuri (se sono NULL nel DB, diventano stringhe vuote in Go "")
+	safeContent := ""
+	if content.Valid {
+		safeContent = content.String
+	}
+
+	safePhotoURL := ""
+	if photoURL.Valid {
+		safePhotoURL = photoURL.String
+	}
+
+	// 3. Usiamo SendMessage per fare tutto il lavoro pesante!
+	// Passiamo "" per replyTo poiché è un inoltro
+	return db.SendMessage(targetConversationID, senderID, msgType, safeContent, safePhotoURL, "")
 }
+
 func (db *appdb) DeleteMessage(messageID string, requestingUserID string) error {
 	res, err := db.c.Exec("DELETE FROM messages WHERE id = ? AND sender_id = ?", messageID, requestingUserID)
 	if err != nil {
@@ -162,12 +180,41 @@ func (db *appdb) GetMessages(conversationID string) ([]Message, error) {
 		if photoURL.Valid {
 			m.PhotoURL = photoURL.String
 		}
-
+		m.Reactions = make([]Reaction, 0)
 		messages = append(messages, m)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if len(messages) > 0 {
+		reactionQuery := `
+            SELECT r.message_id, r.user_id, r.emoji
+            FROM reactions r
+            INNER JOIN messages m ON r.message_id = m.id
+            WHERE m.conversation_id = ?
+        `
+		rRows, err := db.c.Query(reactionQuery, conversationID)
+		if err == nil {
+			defer rRows.Close()
+			reactionsMap := make(map[string][]Reaction)
+
+			for rRows.Next() {
+				var msgID, userID, emoji string
+				if rRows.Scan(&msgID, &userID, &emoji) == nil {
+					reactionsMap[msgID] = append(reactionsMap[msgID], Reaction{
+						UserID: userID,
+						Emoji:  emoji,
+					})
+				}
+			}
+
+			for i, msg := range messages {
+				if rx, found := reactionsMap[msg.ID]; found {
+					messages[i].Reactions = rx
+				}
+			}
+		}
 	}
 
 	return messages, nil
@@ -189,4 +236,48 @@ func (db *appdb) MarkAsRead(conversationID string, userID string) error {
 		return err
 	}
 	return nil
+}
+
+// Aggiunge o aggiorna una reazione (emoji) di un utente a un messaggio.
+func (db *appdb) ReactMessage(messageID string, userID string, emoji string) error {
+	query := `
+		INSERT INTO reactions (message_id, user_id, emoji) 
+		VALUES (?, ?, ?)
+		ON CONFLICT(message_id, user_id) 
+		DO UPDATE SET 
+			emoji = excluded.emoji,
+			timestamp = CURRENT_TIMESTAMP;
+	`
+	_, err := db.c.Exec(query, messageID, userID, emoji)
+	return err
+}
+
+// Rimuove la reazione di un utente da un messaggio specifico.
+func (db *appdb) UnreactMessage(messageID string, userID string) error {
+	query := `
+		DELETE FROM reactions 
+		WHERE message_id = ? AND user_id = ?
+	`
+	_, err := db.c.Exec(query, messageID, userID)
+	return err
+}
+
+// CommentMessage crea una risposta a un messaggio esistente
+func (db *appdb) CommentMessage(originalMessageID string, senderID string, content string) (Message, error) {
+	// 1. Per prima cosa, dobbiamo capire a quale conversazione appartiene il messaggio originale
+	var conversationID string
+	err := db.c.QueryRow("SELECT conversation_id FROM messages WHERE id = ?", originalMessageID).Scan(&conversationID)
+	if err != nil {
+		return Message{}, err // Il messaggio originale non esiste
+	}
+
+	// 2. Ora possiamo usare la tua funzione SendMessage per fare l'inserimento!
+	// Passiamo originalMessageID come ultimo parametro (replyTo)
+	return db.SendMessage(conversationID, senderID, "text", content, "", originalMessageID)
+}
+
+// UncommentMessage elimina un commento (che di fatto è un messaggio)
+func (db *appdb) UncommentMessage(commentID string, requestingUserID string) error {
+	// Poiché il commento è salvato nella tabella messages, usiamo la tua DeleteMessage
+	return db.DeleteMessage(commentID, requestingUserID)
 }

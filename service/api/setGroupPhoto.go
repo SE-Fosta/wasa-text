@@ -2,7 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
 	"github.com/julienschmidt/httprouter"
@@ -12,37 +15,49 @@ import (
 func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	groupID := ps.ByName("groupId")
 
-	// 1. Parsing del form (limite di ~10 MB)
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		ctx.Logger.WithError(err).Error("Error parsing multipart form")
-		w.Header().Set("Content-Type", "application/json")
+	// 1. Limite dimensione (es. 5MB)
+	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
+	if err := r.ParseMultipartForm(5 * 1024 * 1024); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Error parsing form data"})
 		return
 	}
 
-	// 2. Estraiamo il file
-	file, _, err := r.FormFile("photo")
+	// 2. Recuperiamo il file dal form (chiave "photo")
+	file, header, err := r.FormFile("photo")
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Photo file is required"})
 		return
 	}
 	defer file.Close()
 
-	// 3. Generiamo un URL fittizio per la foto del gruppo
-	fakePhotoURL := "/photos/group_" + groupID + ".jpg"
+	// 3. Creiamo un nome file unico per il gruppo
+	ext := filepath.Ext(header.Filename)
+	fileName := "group_" + groupID + ext
+	filePath := filepath.Join("uploads", fileName)
 
-	// 4. Aggiorniamo il database
-	if err := rt.db.SetGroupPhoto(groupID, fakePhotoURL); err != nil {
-		ctx.Logger.WithError(err).Error("setGroupPhoto error")
-		w.Header().Set("Content-Type", "application/json")
+	// 4. Salviamo il file sul disco
+	dst, err := os.Create(filePath)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// 5. Successo!
-	w.WriteHeader(http.StatusNoContent)
+	// 5. Aggiorniamo il database con l'URL (es: /uploads/group_1.jpg)
+	photoURL := "/uploads/" + fileName
+	err = rt.db.SetGroupPhoto(groupID, photoURL)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// 6. Successo! Restituiamo il nuovo URL al frontend
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"photoUrl": photoURL})
 }

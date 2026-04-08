@@ -89,3 +89,21 @@ func (db *appdb) GetUsers(searchQuery string) ([]User, error) {
 
 	return users, nil
 }
+
+func (db *appdb) GetUser(userID string) (User, error) {
+	var u User
+
+	// ATTENZIONE ALLE COLONNE:
+	// Assumendo che nel tuo database (SQLite) la colonna si chiami "name".
+	// Se l'hai chiamata "username", cambia "name" con "username" nella SELECT.
+	err := db.c.QueryRow(`
+        SELECT id, name, IFNULL(photo_url, '') 
+        FROM users 
+        WHERE id = ?`, userID).Scan(&u.ID, &u.Username, &u.PhotoURL)
+
+	if err != nil {
+		return u, err
+	}
+
+	return u, nil
+}

@@ -8,12 +8,16 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// Struttura per leggere cosa ci manda il frontend
-type CreateConversationRequest struct {
-	TargetUserID string `json:"targetUserId"`
-}
-
 func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	var req struct {
+		TargetUserID string `json:"targetUserId"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TargetUserID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "targetUserId is required"})
+		return
+	}
 	// Leggiamo il TUO id dall'URL
 	myUserID := ps.ByName("userId")
 
@@ -24,7 +28,6 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 	}
 
 	// Leggiamo l'id dell'ALTRA persona dal JSON
-	var req CreateConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return

@@ -2,7 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
 	"github.com/julienschmidt/httprouter"
@@ -37,14 +40,37 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Photo file is required"})
 		return
 	}
-	defer file.Close() // Ricordiamoci sempre di chiudere il file per non sprecare memoria!
+	defer file.Close()
 
-	// 4. In un'app reale salveresti il file su disco.
-	// Qui simuliamo la creazione di un URL fittizio basato sull'ID utente.
-	fakePhotoURL := "/photos/user_" + ctx.UserID + ".jpg"
+	// 4. Salviamo fisicamente il file su disco
+	uploadDir := "./uploads"
+	os.MkdirAll(uploadDir, os.ModePerm) // Crea la cartella se non esiste
 
-	// 5. Aggiorniamo il database
-	if err := rt.db.SetMyPhoto(ctx.UserID, fakePhotoURL); err != nil {
+	// Usiamo l'ID utente per il nome del file
+	fileName := "profile_" + ctx.UserID + ".jpg"
+	filePath := filepath.Join(uploadDir, fileName)
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("Error creating file on disk")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
+		return
+	}
+	defer dst.Close()
+
+	// Copia i dati dell'immagine nel file appena creato
+	if _, err := io.Copy(dst, file); err != nil {
+		ctx.Logger.WithError(err).Error("Error saving image")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
+		return
+	}
+
+	// 5. Aggiorniamo il database passandogli ESATTAMENTE realPhotoURL
+	if err := rt.db.SetMyPhoto(ctx.UserID, "/uploads/"+fileName); err != nil {
 		ctx.Logger.WithError(err).Error("Database error updating photo")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
