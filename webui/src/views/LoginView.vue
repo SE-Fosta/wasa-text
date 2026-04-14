@@ -23,7 +23,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 // Importiamo l'istanza di axios configurata
-import api from '../services/axios'; 
+import api from '../services/axios.js'; 
 
 const username = ref('');
 const errorMessage = ref('');
@@ -33,20 +33,28 @@ const doLogin = async () => {
   errorMessage.value = '';
 
   try {
-    // Chiama il tuo endpoint di login nel backend Go
     const response = await api.post('/session', {
       name: username.value
     });
 
+    // 1. STAMPIAMO LA VERITÀ: Vediamo esattamente cosa dice Go
+    console.log("Risposta grezza dal server:", response.data);
 
-    // Il backend ci restituisce l'ID utente (es. "1" o 1)
+    // 2. LA PAROLA MAGICA: usiamo "identifier" perché il tuo Go usa quella!
     const token = response.data.identifier;
 
-    // Salviamo l'ID nel browser
+    // 3. IL BLOCCO DI SICUREZZA
+    if (!token || token === 'undefined') {
+        alert("ERRORE: Non riesco a leggere l'ID. Guarda la console (F12)!");
+        console.error("Il backend non ha inviato 'identifier'. Ha inviato:", response.data);
+        return; // Ci fermiamo qui per non infettare il browser!
+    }
+
+    // 4. Salvataggio sicuro e reindirizzamento
+    console.log("Login perfetto! Salvo il token:", token);
     localStorage.setItem('token', token);
     localStorage.setItem('username', username.value);
-
-    // Andiamo alla Home
+    
     router.push('/');
     
   } catch (error) {

@@ -128,19 +128,18 @@ func (db *appdb) GetMessages(conversationID string) ([]Message, error) {
 	// 1. Aggiungiamo ms.delivered e ms.read alla SELECT
 	// 2. Usiamo LEFT JOIN su message_status per non perdere i messaggi se lo stato manca
 	query := `
-		SELECT 
-			m.id, m.content, m.message_type, m.timestamp, m.sender_id, 
-			u.username as sender_name, m.reply_to, m.photo_url,
-			COALESCE(ms.delivered, 0), 
-			COALESCE(ms.read, 0)
-		FROM messages m
-		INNER JOIN users u ON m.sender_id = u.id
-		-- La JOIN deve prendere lo stato dell'altro utente, non il mio!
-		LEFT JOIN message_status ms ON m.id = ms.message_id AND ms.user_id != m.sender_id
-		WHERE m.conversation_id = ?
-		ORDER BY m.timestamp ASC
-	`
-
+        SELECT 
+            m.id, m.content, m.message_type, m.timestamp, m.sender_id, 
+            u.username as sender_name, m.reply_to, m.photo_url,
+            COALESCE(MIN(ms.delivered), 0), 
+            COALESCE(MIN(ms.read), 0)
+        FROM messages m
+        INNER JOIN users u ON m.sender_id = u.id
+        LEFT JOIN message_status ms ON m.id = ms.message_id AND ms.user_id != m.sender_id
+        WHERE m.conversation_id = ?
+        GROUP BY m.id, m.content, m.message_type, m.timestamp, m.sender_id, u.username, m.reply_to, m.photo_url
+        ORDER BY m.timestamp ASC
+    `
 	rows, err := db.c.Query(query, conversationID)
 	if err != nil {
 		return nil, err

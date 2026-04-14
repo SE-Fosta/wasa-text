@@ -55,6 +55,7 @@ const doLogout = () => {
     // Cancella i dati salvati nel browser
     localStorage.removeItem('token');
     localStorage.removeItem('username');
+	localStorage.removeItem('userId');
 
     // Resetta le variabili a schermo (USANDO .value!)
     username.value = '';
@@ -202,27 +203,35 @@ const searchUsers = async () => {
 };
 
 const startChat = async (selectedUser) => {
-    // Chiude la tendina e pulisce la ricerca
-	console.log("Dati dell'utente selezionato:", selectedUser);
+    // Nascondiamo la tendina della ricerca
     isSearchFocused.value = false;
     searchQuery.value = '';
     
-    // Controlla se sei loggato usando .value
-    if (!userId.value) {
-        console.error("Errore: Utente non loggato");
+    // Controllo di sicurezza
+    if (!selectedUser || !selectedUser.id) {
+        console.error("Errore: l'utente selezionato non ha un ID valido.", selectedUser);
+        alert("Impossibile avviare la chat, utente non valido.");
         return;
     }
 
     try {
-        const response = await api.post(`/users/${userId.value}/conversations`, {
-        targetUserId: selectedUser.id 
-    });
+        // IL PAYLOAD PER LA CHAT 1-A-1
+        const payload = {
+            targetUserId: String(selectedUser.id),
+            isGroup: false,
+            name: "" // Vuoto, non serve per le chat singole
+        };
+
+        // Chiamiamo l'endpoint "universale"
+        const response = await api.post(`/users/${userId.value}/conversations`, payload);
         
-        await updateData();
-        activeChatId.value = response.data.conversationId;
+        // Aggiorniamo la sidebar a sinistra e apriamo la chat appena creata
+        await updateData(); 
+        activeChatId.value = response.data.conversationId; 
         
     } catch (e) {
-        console.error("Errore durante la creazione della chat:", e);
+        console.error("Errore durante la creazione della chat:", e.response?.data || e);
+        alert("Errore durante la creazione della chat.");
     }
 };
 
@@ -559,36 +568,35 @@ const handleGroupPhotoSelected = (event) => {
 
 const createGroup = async () => {
     if (!newGroupName.value.trim() || selectedUsers.value.length === 0) {
-        groupError.value = "Inserisci un nome e seleziona almeno un partecipante.";
+        groupError.value = "Inserisci un nome e seleziona almeno un membro.";
         return;
     }
 
     try {
-        // 1. Creazione conversazione (il backend deve distinguere se è gruppo dal payload)
-        // Usiamo la stessa rotta startChat ma indichiamo che è un gruppo
-        const response = await api.post(`/users/${userId.value}/conversations`, {
+        // 1. CREA LA STANZA
+        const payload = {
+            isGroup: true,
             name: newGroupName.value.trim(),
-            isGroup: true
-        });
-        
+            targetUserId: "" 
+        };
+        const response = await api.post(`/users/${userId.value}/conversations`, payload);
         const newGroupId = response.data.conversationId;
 
-        // 2. Aggiunta partecipanti
-        for (const uId of selectedUsers.value) {
-            await api.post(`/groups/${newGroupId}/members`, { userId: uId });
-        }
+        // 2. AGGIUNGI I MEMBRI (Aspettiamo che finiscano TUTTI in modo pulito)
+        // Usiamo Promise.all per evitare di incartare Axios con un ciclo "for" lento
+        const memberPromises = selectedUsers.value.map(uId => {
+            return api.post(`/groups/${newGroupId}/members`, { userId: String(uId) });
+        });
+        await Promise.all(memberPromises); // Aspetta che tutti i membri siano aggiunti!
 
-        // 3. Foto (se presente)
-        if (groupPhotoFile.value) {
-            const formData = new FormData();
-            formData.append("photo", groupPhotoFile.value);
-            await api.put(`/groups/${newGroupId}/photo`, formData);
-        }
-
-        await updateData();
-        activeChatId.value = newGroupId;
+        // 3. FASE FINALE
+        await updateData(); // Ora Axios è libero e il token viaggerà sicuro!
+        
+        activeChatId.value = newGroupId; 
         closeGroupModal();
+
     } catch (e) {
+        console.error("Errore creazione gruppo:", e.response?.data || e);
         groupError.value = "Errore durante la creazione del gruppo.";
     }
 };
@@ -662,7 +670,7 @@ const addTenUsersModal = async () => {
 								<li v-for="user in searchResults" :key="user.id" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center small px-2 py-2">
 									<span class="text-truncate fw-medium">@{{ user.username }}</span>
 									<button 
-										@click.stop="startChat(user)" 
+										@mousedown.prevent="startChat(user)" 
 										class="btn btn-sm btn-outline-primary py-0 px-2" 
 										style="font-size: 0.75rem;"
 									>

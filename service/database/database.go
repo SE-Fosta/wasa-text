@@ -20,7 +20,7 @@ type AppDatabase interface {
 	// -- Conversazioni --
 	GetMyConversations(userID string) ([]ConversationSummary, error)
 	GetConversation(conversationID string, requestingUserID string) (Conversation, error)
-	CreateConversation(creatorID string, targetUserID string) (string, error)
+	CreateConversation(creatorID string, targetUserID string, isGroup bool, groupName string) (string, error)
 
 	// -- Messaggi --
 	SendMessage(conversationID string, senderID string, messageType string, content string, photoURL string, replyTo string) (Message, error)

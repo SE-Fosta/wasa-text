@@ -9,44 +9,47 @@ import (
 )
 
 func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// 1. Struct universale
 	var req struct {
 		TargetUserID string `json:"targetUserId"`
+		IsGroup      bool   `json:"isGroup"`
+		Name         string `json:"name"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TargetUserID == "" {
+	// 2. Unica lettura pulita del JSON
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "targetUserId is required"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "JSON non valido"})
 		return
 	}
-	// Leggiamo il TUO id dall'URL
-	myUserID := ps.ByName("userId")
 
-	// Sicurezza: sei davvero tu?
+	// 3. Validazione incrociata
+	if req.IsGroup && req.Name == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Il nome del gruppo è obbligatorio"})
+		return
+	}
+	if !req.IsGroup && req.TargetUserID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "targetUserId è obbligatorio per chat singole"})
+		return
+	}
+
+	myUserID := ps.ByName("userId")
 	if myUserID != ctx.UserID {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	// Leggiamo l'id dell'ALTRA persona dal JSON
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	// Creiamo o recuperiamo la chat dal DB
-	convID, err := rt.db.CreateConversation(myUserID, req.TargetUserID)
+	// 4. Chiamiamo il DB con tutti e 4 i parametri
+	convID, err := rt.db.CreateConversation(myUserID, req.TargetUserID, req.IsGroup, req.Name)
 	if err != nil {
 		rt.baseLogger.WithError(err).Error("Errore nella creazione della conversazione")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Rispondiamo al frontend con l'ID della chat
-	response := map[string]string{
-		"conversationId": convID,
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(map[string]string{"conversationId": convID})
 }

@@ -258,15 +258,40 @@ func (db *appdb) GetConversation(conversationID string, requestingUserID string)
 
 	return conv, nil
 }
-func (db *appdb) CreateConversation(creatorID string, targetUserID string) (string, error) {
-	// 1. Controlliamo se esiste già una chat 1-a-1 tra questi due utenti
-	fmt.Printf("Tentativo creazione chat: Creator=[%s], Target=[%s]\n", creatorID, targetUserID)
+func (db *appdb) CreateConversation(creatorID string, targetUserID string, isGroup bool, groupName string) (string, error) {
+	// ==========================================
+	// SCENARIO 1: CREAZIONE DI UN GRUPPO
+	// ==========================================
+	if isGroup {
+		// 1. Creiamo la conversazione impostando is_group a 1 e salvando il nome
+		res, err := db.c.Exec(`INSERT INTO conversations (is_group, name, photo_url) VALUES (1, ?, '')`, groupName)
+		if err != nil {
+			return "", err
+		}
+
+		convID, err := res.LastInsertId()
+		if err != nil {
+			return "", err
+		}
+
+		// 2. Aggiungiamo il creatore come PRIMO membro del gruppo
+		_, err = db.c.Exec(`INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)`, convID, creatorID)
+		if err != nil {
+			return "", err
+		}
+
+		return fmt.Sprintf("%d", convID), nil
+	}
+
+	// ==========================================
+	// SCENARIO 2: CREAZIONE CHAT 1-A-1 (La tua logica intatta)
+	// ==========================================
 	checkQuery := `
-		SELECT c.id FROM conversations c
-		JOIN conversation_members m1 ON c.id = m1.conversation_id
-		JOIN conversation_members m2 ON c.id = m2.conversation_id
-		WHERE c.is_group = 0 AND m1.user_id = ? AND m2.user_id = ?
-	`
+        SELECT c.id FROM conversations c
+        JOIN conversation_members m1 ON c.id = m1.conversation_id
+        JOIN conversation_members m2 ON c.id = m2.conversation_id
+        WHERE c.is_group = 0 AND m1.user_id = ? AND m2.user_id = ?
+    `
 	var existingConvID int64
 	err := db.c.QueryRow(checkQuery, creatorID, targetUserID).Scan(&existingConvID)
 
