@@ -86,14 +86,14 @@ input {
 }
 button {
   padding: 10px 20px;
-  background-color: #4CAF50;
+  background-color: #0d6efd;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 button:hover {
-  background-color: #45a049;
+  background-color: #0d6efd;
 }
 .error {
   color: red;
