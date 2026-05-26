@@ -7,6 +7,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// markAsRead gestisce PUT /conversations/:conversationId/read
 func (rt *_router) markAsRead(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	conversationID := ps.ByName("conversationId")
 

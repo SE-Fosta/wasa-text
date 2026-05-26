@@ -8,7 +8,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// deleteMessage gestisce l'endpoint DELETE /messages/:messageId
+// deleteMessage gestisce DELETE /messages/:messageId
 func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	messageID := ps.ByName("messageId")
 

@@ -8,7 +8,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// commentMessage gestisce l'endpoint POST /messages/:messageId/comments
+// commentMessage gestisce POST /messages/:messageId/comments
 func (rt *_router) reactMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	messageID := ps.ByName("messageId")
 
@@ -29,7 +29,6 @@ func (rt *_router) reactMessage(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
-	// Salva la reazione nel database
 	err := rt.db.ReactMessage(messageID, ctx.UserID, req.Emoji)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -41,6 +40,5 @@ func (rt *_router) reactMessage(w http.ResponseWriter, r *http.Request, ps httpr
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	// Restituiamo un semplice ack
 	_ = json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

@@ -8,11 +8,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// setGroupName gestisce l'endpoint PUT /groups/:groupId/name
+// setGroupName gestisce PUT /groups/:groupId/name
 func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	groupID := ps.ByName("groupId")
 
-	// 1. Parsing del JSON
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -23,7 +22,6 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
-	// 2. Validazione minima (es. nome non vuoto e non troppo lungo)
 	if len(req.Name) < 3 || len(req.Name) > 30 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -31,7 +29,6 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
-	// 3. Chiamata al Database
 	err := rt.db.SetGroupName(groupID, req.Name)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("setGroupName error")
@@ -41,6 +38,5 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
-	// 4. Successo: 204 No Content
 	w.WriteHeader(http.StatusNoContent)
 }

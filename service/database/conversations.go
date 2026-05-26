@@ -3,7 +3,6 @@ package database
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"strconv"
 	"time"
 )
@@ -34,51 +33,54 @@ type Conversation struct {
 }
 
 func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error) {
-	// Abbiamo trasformato la query per usare delle JOIN molto più efficienti
-	// e abbiamo aggiunto il calcolo dei messaggi non letti (UnreadCount)
 	query := `
-        SELECT 
-            c.id, 
-            CASE 
-                WHEN c.is_group = 1 THEN c.name 
-                ELSE (
-                    SELECT u.username 
-                    FROM conversation_members m 
-                    INNER JOIN users u ON m.user_id = u.id 
-                    WHERE m.conversation_id = c.id AND u.id != ?
-                ) 
-            END as chat_name,
-            c.photo_url, 
-            c.is_group,
-            lm.content as last_msg_content,
-            lm.message_type as last_msg_type,
-            lu.username as last_msg_sender,
-            lm.timestamp as last_timestamp,
-            (
-                SELECT COUNT(*) 
-                FROM message_status ms 
-                INNER JOIN messages m ON ms.message_id = m.id 
-                WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.read = 0
-            ) as unread_count
-        FROM conversations c
-        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
-        -- Trucco SQL: Troviamo l'ID del messaggio più recente per ogni conversazione
-        LEFT JOIN (
-            SELECT conversation_id, MAX(id) as max_msg_id
-            FROM messages
-            GROUP BY conversation_id
-        ) as latest_msg ON c.id = latest_msg.conversation_id
-        -- Uniamo i dettagli di quell'ultimo messaggio
-        LEFT JOIN messages lm ON latest_msg.max_msg_id = lm.id
-        -- Uniamo l'utente che ha inviato l'ultimo messaggio (per il SenderName)
-        LEFT JOIN users lu ON lm.sender_id = lu.id
-        WHERE cm.user_id = ?
-        AND latest_msg.max_msg_id IS NOT NULL -- Esclude le chat vuote
-        ORDER BY last_timestamp DESC
-    `
+			SELECT 
+				c.id, 
+				CASE 
+					WHEN c.is_group = 1 THEN c.name 
+					ELSE (
+						SELECT u.username 
+						FROM conversation_members m 
+						INNER JOIN users u ON m.user_id = u.id 
+						WHERE m.conversation_id = c.id AND u.id != ?
+					) 
+				END as chat_name,
+				-- MODIFICA QUI: Se è un gruppo prendi c.photo_url, altrimenti prendi u.photo_url
+				CASE 
+					WHEN c.is_group = 1 THEN c.photo_url 
+					ELSE (
+						SELECT u.photo_url 
+						FROM conversation_members m 
+						INNER JOIN users u ON m.user_id = u.id 
+						WHERE m.conversation_id = c.id AND u.id != ?
+					) 
+				END as photo_url, 
+				c.is_group,
+				lm.content as last_msg_content,
+				lm.message_type as last_msg_type,
+				lu.username as last_msg_sender,
+				lm.timestamp as last_timestamp,
+				(
+					SELECT COUNT(*) 
+					FROM message_status ms 
+					INNER JOIN messages m ON ms.message_id = m.id 
+					WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.read = 0
+				) as unread_count
+			FROM conversations c
+			INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+			LEFT JOIN (
+				SELECT conversation_id, MAX(id) as max_msg_id
+				FROM messages
+				GROUP BY conversation_id
+			) as latest_msg ON c.id = latest_msg.conversation_id
+			LEFT JOIN messages lm ON latest_msg.max_msg_id = lm.id
+			LEFT JOIN users lu ON lm.sender_id = lu.id
+			WHERE cm.user_id = ?
+			AND latest_msg.max_msg_id IS NOT NULL 
+			ORDER BY last_timestamp DESC
+		`
 
-	// ATTENZIONE: Ora ci sono tre '?' nella query, quindi passiamo userID 3 volte!
-	rows, err := db.c.Query(query, userID, userID, userID)
+	rows, err := db.c.Query(query, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,12 +91,10 @@ func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error
 		var s ConversationSummary
 		var idInt int64
 
-		// Prepariamo le variabili "sicure" per i dati che potrebbero essere nulli
 		var name, photoURL, lastMsgContent, lastMsgType, lastMsgSender sql.NullString
 		var lastTimestamp sql.NullTime
 		var unreadCount int
 
-		// L'ordine DEVE essere identico alla SELECT in alto
 		err := rows.Scan(
 			&idInt,
 			&name,
@@ -110,7 +110,6 @@ func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error
 			return nil, err
 		}
 
-		// Assegnazioni Base
 		s.ID = strconv.FormatInt(idInt, 10)
 		if name.Valid {
 			s.Name = name.String
@@ -120,13 +119,12 @@ func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error
 		}
 		s.UnreadCount = unreadCount
 
-		// --- POPOLIAMO LA NUOVA STRUCT ANNIDATA (MessagePreview) ---
 		s.LastMessage = MessagePreview{}
 
 		if lastMsgContent.Valid && lastMsgContent.String != "" {
 			s.LastMessage.Content = lastMsgContent.String
 		} else {
-			s.LastMessage.Content = "📷 Foto" // Testo di fallback se è una foto
+			s.LastMessage.Content = "📷 Foto"
 		}
 
 		if lastMsgType.Valid {
@@ -137,7 +135,6 @@ func (db *appdb) GetMyConversations(userID string) ([]ConversationSummary, error
 			s.LastMessage.SenderName = lastMsgSender.String
 		}
 
-		// Gestione Timestamp
 		if lastTimestamp.Valid {
 			s.LastActivity = lastTimestamp.Time
 		} else {
@@ -280,7 +277,7 @@ func (db *appdb) CreateConversation(creatorID string, targetUserID string, isGro
 			return "", err
 		}
 
-		return fmt.Sprintf("%d", convID), nil
+		return strconv.FormatInt(convID, 10), nil
 	}
 
 	// ==========================================
@@ -297,7 +294,7 @@ func (db *appdb) CreateConversation(creatorID string, targetUserID string, isGro
 
 	if err == nil {
 		// La conversazione esiste già! Restituiamo il suo ID senza creare doppioni
-		return fmt.Sprintf("%d", existingConvID), nil
+		return strconv.FormatInt(existingConvID, 10), nil
 	}
 
 	// 2. Se non esiste, creiamo la nuova riga in 'conversations'
@@ -322,7 +319,7 @@ func (db *appdb) CreateConversation(creatorID string, targetUserID string, isGro
 		return "", err
 	}
 
-	return fmt.Sprintf("%d", convID), nil
+	return strconv.FormatInt(convID, 10), nil
 }
 
 func (db *appdb) AddToGroup(groupID string, userIDToAdd string) error {

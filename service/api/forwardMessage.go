@@ -8,10 +8,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// forwardMessage gestisce l'endpoint POST /messages/:messageId/forward
+// forwardMessage gestisce POST /messages/:messageId/forward
 func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	messageID := ps.ByName("messageId")
-	senderID := ctx.UserID // Assicurati che questo sia il modo in cui recuperi l'ID dell'utente nel tuo contesto
+	senderID := ctx.UserID
 
 	var reqBody struct {
 		TargetConversationID string `json:"targetConversationId"`

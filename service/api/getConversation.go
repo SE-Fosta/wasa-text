@@ -8,14 +8,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// getConversation gestisce l'endpoint GET /conversations/:conversationId
+// getConversation gestisce GET /conversations/:conversationId
 func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// 1. Estraiamo l'ID della conversazione dall'URL
 	conversationID := ps.ByName("conversationId")
 
-	// 2. Chiamata al DB
-	// Passiamo anche ctx.UserID al DB così può verificare se l'utente fa parte di quella chat!
-	// (Se non ne fa parte, il DB dovrebbe restituire un errore o un not found)
 	conv, err := rt.db.GetConversation(conversationID, ctx.UserID)
 	if err != nil {
 		ctx.Logger.WithError(err).Warn("Conversation not found or access denied")
@@ -25,7 +21,5 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 		return
 	}
 
-	// 3. Successo! Restituiamo l'oggetto Conversation completo (con membri e messaggi)
-	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(conv)
 }

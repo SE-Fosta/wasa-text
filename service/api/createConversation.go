@@ -8,22 +8,20 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// createConversation gestisce POST /users/:userId/conversations
 func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// 1. Struct universale
 	var req struct {
 		TargetUserID string `json:"targetUserId"`
 		IsGroup      bool   `json:"isGroup"`
 		Name         string `json:"name"`
 	}
 
-	// 2. Unica lettura pulita del JSON
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "JSON non valido"})
 		return
 	}
 
-	// 3. Validazione incrociata
 	if req.IsGroup && req.Name == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Il nome del gruppo è obbligatorio"})
@@ -41,7 +39,6 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		return
 	}
 
-	// 4. Chiamiamo il DB con tutti e 4 i parametri
 	convID, err := rt.db.CreateConversation(myUserID, req.TargetUserID, req.IsGroup, req.Name)
 	if err != nil {
 		rt.baseLogger.WithError(err).Error("Errore nella creazione della conversazione")

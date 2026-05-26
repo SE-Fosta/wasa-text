@@ -8,11 +8,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// uncommentMessage gestisce l'endpoint DELETE /messages/:messageId/comments
+// uncommentMessage gestisce DELETE /messages/:messageId/comments
 func (rt *_router) unReactMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	messageID := ps.ByName("messageId")
 
-	// Passiamo ID messaggio e ID utente: cancelliamo solo la TUA reazione
 	err := rt.db.UnreactMessage(messageID, ctx.UserID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("unreactMessage error")

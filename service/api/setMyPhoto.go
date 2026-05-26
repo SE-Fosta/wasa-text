@@ -11,9 +11,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// setMyPhoto gestisce l'endpoint PUT /users/:userId/photo
+// setMyPhoto gestisce PUT /users/:userId/photo
 func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// 1. Controllo Autorizzazione
 	targetUserID := ps.ByName("userId")
 	if ctx.UserID != targetUserID {
 		ctx.Logger.Warn("User tried to change someone else's photo")
@@ -23,7 +22,6 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
-	// 2. Parsing del form (limite di ~10 MB)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		ctx.Logger.WithError(err).Error("Error parsing multipart form")
 		w.Header().Set("Content-Type", "application/json")
@@ -32,7 +30,6 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
-	// 3. Estraiamo il file dal campo "photo"
 	file, _, err := r.FormFile("photo")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -42,11 +39,16 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 	}
 	defer file.Close()
 
-	// 4. Salviamo fisicamente il file su disco
 	uploadDir := "./uploads"
-	os.MkdirAll(uploadDir, os.ModePerm) // Crea la cartella se non esiste
+	err = os.MkdirAll(uploadDir, os.ModePerm)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("errore durante la creazione della cartella di upload")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Internal server error"})
+		return
+	}
 
-	// Usiamo l'ID utente per il nome del file
 	fileName := "profile_" + ctx.UserID + ".jpg"
 	filePath := filepath.Join(uploadDir, fileName)
 
@@ -60,7 +62,6 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 	}
 	defer dst.Close()
 
-	// Copia i dati dell'immagine nel file appena creato
 	if _, err := io.Copy(dst, file); err != nil {
 		ctx.Logger.WithError(err).Error("Error saving image")
 		w.Header().Set("Content-Type", "application/json")
@@ -69,7 +70,6 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
-	// 5. Aggiorniamo il database passandogli ESATTAMENTE realPhotoURL
 	if err := rt.db.SetMyPhoto(ctx.UserID, "/uploads/"+fileName); err != nil {
 		ctx.Logger.WithError(err).Error("Database error updating photo")
 		w.Header().Set("Content-Type", "application/json")
@@ -78,6 +78,5 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
-	// 6. Successo! 204 No Content
 	w.WriteHeader(http.StatusNoContent)
 }

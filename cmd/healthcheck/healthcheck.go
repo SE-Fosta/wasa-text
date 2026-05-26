@@ -46,4 +46,3 @@ func main() {
 	_ = res.Body.Close()
 	os.Exit(0)
 }
-

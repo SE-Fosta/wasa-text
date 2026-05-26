@@ -11,7 +11,7 @@ type AppDatabase interface {
 	Ping() error
 
 	// -- Utenti --
-	DoLogin(username string) (string, error)
+	DoLogin(username string) (string, string, error)
 	SetMyUserName(userID string, newName string) error
 	SetMyPhoto(userID string, photoURL string) error
 	GetUsers(searchQuery string) ([]User, error)
@@ -44,13 +44,11 @@ type appdb struct {
 	c *sql.DB
 }
 
-// New returns a new instance of AppDatabase based on the SQLite connection
 func New(db *sql.DB) (AppDatabase, error) {
 	if db == nil {
 		return nil, errors.New("database is required when building an AppDatabase")
 	}
 
-	// Abilitiamo le Foreign Keys
 	_, err := db.Exec(`PRAGMA foreign_keys = ON;`)
 	if err != nil {
 		return nil, fmt.Errorf("error enabling foreign keys: %w", err)
@@ -59,7 +57,6 @@ func New(db *sql.DB) (AppDatabase, error) {
 	var tableName string
 	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='users';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		// Creazione tabelle con AUTOINCREMENT per gli ID
 		sqlStmt := `
 		CREATE TABLE IF NOT EXISTS users (
 			id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

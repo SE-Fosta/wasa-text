@@ -4,11 +4,7 @@ import (
 	"net/http"
 )
 
-// Handler returns an instance of httprouter.Router that handle APIs registered here
 func (rt *_router) Handler() http.Handler {
-	// -------------------------------------------------------------------------
-	// Configurazione CORS per le richieste Pre-flight (OPTIONS)
-	// -------------------------------------------------------------------------
 	rt.router.GlobalOPTIONS = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Access-Control-Request-Method") != "" {
 			header := w.Header()

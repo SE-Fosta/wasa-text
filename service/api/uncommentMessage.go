@@ -8,8 +8,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// uncommentMessage gestiscen DELETE /messages/:messageId/comments/:commentId
 func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// Ci serve l'ID del commento specifico da eliminare
 	commentID := ps.ByName("commentId")
 
 	err := rt.db.UncommentMessage(commentID, ctx.UserID)

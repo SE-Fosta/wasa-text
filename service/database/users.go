@@ -12,26 +12,31 @@ type User struct {
 	PhotoURL string `json:"photoUrl,omitempty"`
 }
 
-func (db *appdb) DoLogin(username string) (string, error) {
+func (db *appdb) DoLogin(username string) (string, string, error) {
 	var idInt int64
-	err := db.c.QueryRow("SELECT id FROM users WHERE username = ?", username).Scan(&idInt)
+	var photoUrl sql.NullString
+
+	query := "SELECT id, photo_url FROM users WHERE username = ?"
+	err := db.c.QueryRow(query, username).Scan(&idInt, &photoUrl)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		// Utente non esiste, lo inseriamo
 		res, err := db.c.Exec("INSERT INTO users (username) VALUES (?)", username)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
+
 		idInt, err = res.LastInsertId()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return strconv.FormatInt(idInt, 10), nil
+
+		return strconv.FormatInt(idInt, 10), "", nil
+
 	} else if err != nil {
-		return "", err
+		return "", "", err
 	}
-	// Utente esiste
-	return strconv.FormatInt(idInt, 10), nil
+
+	return strconv.FormatInt(idInt, 10), photoUrl.String, nil
 }
 
 func (db *appdb) SetMyUserName(userID string, newName string) error {
@@ -40,7 +45,11 @@ func (db *appdb) SetMyUserName(userID string, newName string) error {
 		return err
 	}
 	affected, err := res.RowsAffected()
-	if err == nil && affected == 0 {
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
 		return errors.New("user not found")
 	}
 	return err
@@ -54,8 +63,6 @@ func (db *appdb) GetUsers(searchQuery string) ([]User, error) {
 	var rows *sql.Rows
 	var err error
 
-	// Usiamo CAST per convertire l'INTEGER in stringa
-	// Usiamo COALESCE per evitare i NULL e restituire "" se non c'è foto
 	if searchQuery != "" {
 		query := `SELECT CAST(id AS TEXT), username, COALESCE(photo_url, '') FROM users WHERE username LIKE ?`
 		rows, err = db.c.Query(query, "%"+searchQuery+"%")
@@ -72,7 +79,6 @@ func (db *appdb) GetUsers(searchQuery string) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		// ATTENZIONE: Qui usiamo u.PhotoURL con "URL" maiuscolo, esattamente come nella tua struct!
 		if err := rows.Scan(&u.ID, &u.Username, &u.PhotoURL); err != nil {
 			return nil, err
 		}
@@ -93,9 +99,6 @@ func (db *appdb) GetUsers(searchQuery string) ([]User, error) {
 func (db *appdb) GetUser(userID string) (User, error) {
 	var u User
 
-	// ATTENZIONE ALLE COLONNE:
-	// Assumendo che nel tuo database (SQLite) la colonna si chiami "name".
-	// Se l'hai chiamata "username", cambia "name" con "username" nella SELECT.
 	err := db.c.QueryRow(`
         SELECT id, name, IFNULL(photo_url, '') 
         FROM users 

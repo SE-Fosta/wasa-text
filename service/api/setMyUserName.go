@@ -8,12 +8,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// setMyUserName gestisce l'endpoint PUT /users/:userId/username
+// setMyUserName gestisce PUT /users/:userId/username
 func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// 1. Leggiamo l'ID bersaglio
 	targetUserID := ps.ByName("userId")
 
-	// 2. Controllo Autorizzazione
 	if ctx.UserID != targetUserID {
 		ctx.Logger.Warn("User tried to change someone else's username")
 		w.Header().Set("Content-Type", "application/json")
@@ -22,7 +20,6 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
-	// 3. Parsing del JSON: ORA CERCHIAMO "username"
 	var req struct {
 		Username string `json:"username"`
 	}
@@ -33,7 +30,6 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
-	// 4. Validazione lunghezza nome
 	if len(req.Username) < 3 || len(req.Username) > 16 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -41,7 +37,6 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
-	// 5. Aggiorniamo il database
 	err := rt.db.SetMyUserName(ctx.UserID, req.Username)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("setMyUserName error")
@@ -51,6 +46,5 @@ func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
-	// 6. Successo! 204 No Content
 	w.WriteHeader(http.StatusNoContent)
 }

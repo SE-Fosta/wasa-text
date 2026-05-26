@@ -6,7 +6,6 @@ import api from './services/axios.js'
 const route = useRoute();
 const router = useRouter();
 
-// 1. INIZIALIZZIAMO SUBITO LE VARIABILI LEGGENDO IL BROWSER
 const userId = ref(localStorage.getItem('token'));
 const username = ref(localStorage.getItem('username') || '');
 
@@ -46,18 +45,28 @@ const groupPhotoFile = ref(null);
 const groupPhotoPreview = ref(null);
 const groupError = ref('');
 const allUsers = ref([]);
-
-// Variabili per l'invio delle foto
+const isGroupInfoModalOpen = ref(false);
+const editingGroupName = ref('');
+const editingGroupPhotoPreview = ref(null);
+const groupMembersList = ref([]); 
+const userToAdd = ref('');
 const fileInput = ref(null);
 const selectedPhoto = ref(null);
+const groupInfoError = ref('');
+const groupAddSearchQuery = ref('');
+const groupAddSearchResults = ref([]);
+const selectedUsersToAdd = ref([]);
+const isGroupAddSearchFocused = ref(false);
+const editingGroupPhotoFile = ref(null);
 
 const doLogout = () => {
-    // Cancella i dati salvati nel browser
+    // Cancella i dati salvati dell'utenye
     localStorage.removeItem('token');
     localStorage.removeItem('username');
 	localStorage.removeItem('userId');
+    localStorage.removeItem('photoUrl');
 
-    // Resetta le variabili a schermo (USANDO .value!)
+    // Resetta le variabili a schermo 
     username.value = '';
     userId.value = null;
     chats.value = [];
@@ -71,13 +80,13 @@ const doLogout = () => {
     router.push('/login');
 };
 
-// Carica le chat dell'utente
 const updateData = async () => {
-    // AGGIORNIAMO LE VARIABILI USANDO .value
+    // Carica i dati dell'utente
     userId.value = localStorage.getItem('token');
     username.value = localStorage.getItem('username') || '';
+    userPhotoUrl.value = localStorage.getItem('photoUrl') || '';
 
-    // USIAMO userId.value PER IL CONTROLLO E PER L'URL
+    // Carica le chat dell'utente
     if (userId.value) {
         try {
             let response = await api.get(`/users/${userId.value}/conversations`);
@@ -89,21 +98,18 @@ const updateData = async () => {
         chats.value = [];
     }
 
-    // Carica tutti gli utenti
     searchUsers();
 };
 
 const formatTime = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
-    // Mostra solo ore e minuti
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 const truncateText = (text, maxLength) => {
     if (!text) return '';
     if (text.length <= maxLength) return text;
-    // Taglia il testo e aggiunge i puntini di sospensione
     return text.substring(0, maxLength) + '...';
 };
 
@@ -113,9 +119,16 @@ const scrollToBottom = () => {
     }
 };
 
+const scrollToMessage = (msgId) => {
+    const element = document.getElementById(`msg-${msgId}`);
+    if (element && chatContainer.value) {
+        // block: 'center' mette il messaggio al centro dello schermo così è ben visibile
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+};
+
 const markAsRead = async (conversationId) => {
     try {
-        // ROTTA CORRETTA: punta alla conversazione intera
         await api.put(`/conversations/${conversationId}/read`);
     } catch (e) {
         console.warn("Impossibile segnare i messaggi come letti:", e);
@@ -126,59 +139,60 @@ const loadMessages = async () => {
     if (!activeChatId.value) return;
     
     try {
-        // Recuperiamo i messaggi dal server
+        // Recupera i messaggi dal server
         const response = await api.get(`/conversations/${activeChatId.value}/messages`);
         const newMessages = response.data || [];
         
-        // --- NUOVA LOGICA: SEGNA COME LETTO ---
-        // Avvisiamo il backend che abbiamo ricevuto (e stiamo leggendo) i messaggi
+        // 1. Troviamo il primo messaggio non letto (inviato da altri)
+        // Dobbiamo farlo ORA, prima che markAsRead() aggiorni lo stato!
+        const firstUnreadMsg = newMessages.find(m => !m.read && m.senderId != userId.value);
+        
+        // Aggiorna la spunta sul database
         await markAsRead(activeChatId.value);
-        // --------------------------------------
 
-        // 1. Capiamo se l'utente sta guardando vecchi messaggi (ha fatto scroll in su)
+        // Evita di aggiornare la chat mentre si legge un messaggio
         let isAtBottom = true;
         if (chatContainer.value) {
             const { scrollTop, scrollHeight, clientHeight } = chatContainer.value;
-            // Se la distanza dal fondo è più di 100 pixel, vuol dire che è salito!
             if (scrollHeight - scrollTop - clientHeight > 100) {
                 isAtBottom = false;
             }
         }
 
-        // 2. Capiamo se è la prima volta che apre questa chat
         const isFirstLoad = messages.value.length === 0;
 
-        // Aggiorniamo i messaggi a schermo con quelli nuovi (che ora avranno le spunte aggiornate)
+        // Aggiorna i messaggi a schermo
         messages.value = newMessages;
         
-        // 3. Scorri in basso SOLO se serve veramente!
-        if (isFirstLoad || isAtBottom) {
-            nextTick(() => {
+        // Carica i messaggi dal non letto o dal basso se non si hanno messaggi non letti
+        nextTick(() => {
+            if (isFirstLoad) {
+                if (firstUnreadMsg) {
+                    scrollToMessage(firstUnreadMsg.id);
+                } else {
+                    scrollToBottom();
+                }
+            } else if (isAtBottom) {
                 scrollToBottom();
-            });
-        }
+            }
+        });
 
     } catch (e) {
         console.error("Errore nel caricamento dei messaggi:", e);
-        // Evitiamo di resettare messages.value = [] in caso di errore di rete momentaneo
-        // così l'utente continua a vedere i vecchi messaggi finché non torna il segnale.
     }
 };
 
 
-// Quando l'ID della chat cambia (es. clicchi su un altro utente), scarica i suoi messaggi
+// Carica messaggi della chat selezionata
 watch(activeChatId, (newVal) => {
-    // 1. Se c'era già un timer di un'altra chat, fermalo!
     if (pollingTimer) {
         clearInterval(pollingTimer);
         pollingTimer = null;
     }
 
     if (newVal) {
-        // 2. Carica i messaggi subito la prima volta
         loadMessages();
         
-        // 3. LA MAGIA: Controlla nuovi messaggi ogni 2 secondi (2000 millisecondi)
         pollingTimer = setInterval(() => {
             loadMessages();
         }, 2000);
@@ -188,6 +202,7 @@ watch(activeChatId, (newVal) => {
     }
 });
 
+//Carica tutti gli utenti o filtrati tramite l'iniziale 
 const searchUsers = async () => {
     try {
         const response = await api.get('/users', { params: { username: searchQuery.value } });
@@ -202,8 +217,8 @@ const searchUsers = async () => {
     }
 };
 
+//
 const startChat = async (selectedUser) => {
-    // Nascondiamo la tendina della ricerca
     isSearchFocused.value = false;
     searchQuery.value = '';
     
@@ -215,50 +230,38 @@ const startChat = async (selectedUser) => {
     }
 
     try {
-        // IL PAYLOAD PER LA CHAT 1-A-1
         const payload = {
             targetUserId: String(selectedUser.id),
             isGroup: false,
-            name: "" // Vuoto, non serve per le chat singole
+            name: "" 
         };
 
-        // Chiamiamo l'endpoint "universale"
         const response = await api.post(`/users/${userId.value}/conversations`, payload);
         
-        // Aggiorniamo la sidebar a sinistra e apriamo la chat appena creata
+        // Aggiorna la sidebar a sinistra
         await updateData(); 
-        activeChatId.value = response.data.conversationId; 
+        
+        // Prendiamo l'ID della conversazione 
+        const convId = response.data.conversationId;
+
+        // Cerca la chat appena caricata in chats.value
+        const chatIndex = chats.value.findIndex(c => (c.id || c.conversationId) === convId);
+        
+        // Crea la chat
+        chats.value.unshift({
+            id: convId,
+            name: selectedUser.username,
+            photoUrl: selectedUser.photoUrl || null,
+            isGroup: false,
+            unreadCount: 0,
+            lastActivity: new Date().toISOString()
+        });
+    
+
+        activeChatId.value = convId; 
         
     } catch (e) {
         console.error("Errore durante la creazione della chat:", e.response?.data || e);
-        alert("Errore durante la creazione della chat.");
-    }
-};
-
-const sendMessage = async () => {
-    // 1. SE C'È UNA FOTO PRONTA, MANDA QUELLA!
-    if (selectedPhoto.value) {
-        await sendPhoto();
-        return; // Ci fermiamo qui per non mandare anche il testo a vuoto
-    }
-
-    // 2. COMPORTAMENTO NORMALE PER IL TESTO
-    if (!messageText.value.trim() || !activeChatId.value || !userId.value) return;
-
-    try {
-        await api.post(`/conversations/${activeChatId.value}/messages`, {
-            content: messageText.value,
-            messageType: "text",
-			replyTo: replyingToMessage.value ? replyingToMessage.value.id : undefined
-        });
-
-        messageText.value = ''; 
-		replyingToMessage.value = null;
-
-        await loadMessages(); 
-        await updateData(); 
-    } catch (e) {
-        console.error("Errore nell'invio del messaggio di testo:", e);
     }
 };
 
@@ -266,7 +269,6 @@ const triggerFileInput = () => {
     fileInput.value.click();
 };
 
-// Quando l'utente seleziona una foto dal suo PC
 const handlePhotoSelected = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -275,17 +277,23 @@ const handlePhotoSelected = (event) => {
     selectedPhoto.value = file;
 };
 
-const sendPhoto = async () => {
+//Gestisce la foto per esser inviata come messaggio
+const sendPhoto = async (caption = '', replyToId = null) => {
     if (!selectedPhoto.value || !activeChatId.value || !userId.value) return;
 
     try {
         const formData = new FormData();
         formData.append("photo", selectedPhoto.value);
         
-        // Aggiungiamo anche il tipo di messaggio, così il server sa che è una foto!
         formData.append("messageType", "photo");
 
-        // IL SEGRETO È QUI: Usiamo lo stesso URL dei messaggi di testo!
+        if (caption && caption.trim() !== '') {
+            formData.append("content", caption.trim());
+        }
+        if (replyToId) {
+            formData.append("replyTo", replyToId);
+        }
+        
         await api.post(`/conversations/${activeChatId.value}/messages`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
@@ -295,7 +303,6 @@ const sendPhoto = async () => {
         console.log("Foto inviata con successo!");
         selectedPhoto.value = null; 
         
-        // Svuotiamo anche l'input file HTML per poter ricaricare la stessa foto se serve
         if (fileInput.value) fileInput.value.value = '';
         
         await loadMessages(); 
@@ -305,6 +312,43 @@ const sendPhoto = async () => {
     }
 };
 
+// Crea il messaggio da inviare
+const sendMessage = async () => {
+    // Invia foto e se presente un testo
+    if (selectedPhoto.value) {
+        await sendPhoto(
+            messageText.value, 
+            replyingToMessage.value ? replyingToMessage.value.id : undefined
+        );
+        
+        // Svuota i campi dopo aver inviato il messaggio
+        messageText.value = ''; 
+        replyingToMessage.value = null;
+        return;
+    }
+
+    // Invia testo
+    if (!messageText.value.trim() || !activeChatId.value || !userId.value) return;
+
+    //Crea il messaggio nel backend
+    try {
+        await api.post(`/conversations/${activeChatId.value}/messages`, {
+            content: messageText.value,
+            messageType: "text",
+            replyTo: replyingToMessage.value ? replyingToMessage.value.id : undefined
+        });
+
+        messageText.value = ''; 
+        replyingToMessage.value = null;
+
+        await loadMessages(); 
+        await updateData(); 
+    } catch (e) {
+        console.error("Errore nell'invio del messaggio di testo:", e);
+    }
+};
+
+// Elimina un messaggio
 const deleteMessage = async (messageId) => {
     // Chiediamo conferma per sicurezza!
     if (!confirm("Vuoi davvero eliminare questo messaggio?")) return;
@@ -326,14 +370,13 @@ const cancelForward = () => {
     forwardingMessageId.value = null;
 };
 
-const confirmForward = async (targetChat) => {
+// Inoltra il messaggio
+const forwardMessage = async (targetChat) => {
     if (!forwardingMessageId.value || !targetChat) return;
 
-    // Recuperiamo l'ID della chat di destinazione
     const targetId = targetChat.id || targetChat.conversationId;
 
     try {
-        // Usa la tua istanza axios "api"
         await api.post(`/messages/${forwardingMessageId.value}/forward`, {
             targetConversationId: targetId
         });
@@ -341,10 +384,8 @@ const confirmForward = async (targetChat) => {
         console.log("Messaggio inoltrato con successo!");
         forwardingMessageId.value = null; // Chiudi il popup
         
-        // (Opzionale) se inoltri in una chat e ci clicchi sopra, si aggiornerà in automatico
     } catch (e) {
         console.error("Errore durante l'inoltro:", e);
-        alert("Impossibile inoltrare il messaggio.");
     }
 };
 
@@ -357,49 +398,43 @@ const toggleReactionMenu = (messageId) => {
     }
 };
 
-// Gestisce l'aggiunta o la rimozione della reazione
+// Gestisce l'aggiunta, rimozione o modifica della reaction
 const toggleReaction = async (messageId, emoji) => {
     console.log("1. Hai cliccato l'emoji:", emoji, "sul messaggio:", messageId);
 
-    // Chiudiamo il menu a tendina
+    // Chiude la tendina
     activeReactionMessageId.value = null;
 
-    // Troviamo il messaggio nei nostri dati locali
     const msg = messages.value.find(m => m.id === messageId);
-    console.log("2. Messaggio trovato nei dati locali:", msg);
 
     if (!msg) {
         console.error("ERRORE: Non trovo il messaggio! Forse messageId è undefined?");
         return; 
     }
 
-    // Controlliamo se l'utente loggato ha già una reazione
+    // Controlla se l'utente loggato ha già una reazione
     const myExistingReaction = msg.reactions?.find(r => r.userId == userId.value);
-    console.log("3. La tua reazione precedente era:", myExistingReaction);
 
+    // Aggiunge o modifica una reaction
     try {
         if (myExistingReaction && myExistingReaction.emoji === emoji) {
-            console.log("4. Stai togliendo l'emoji... Faccio la DELETE!");
             await api.delete(`/messages/${messageId}/reactions`);
         } else {
-            console.log("4. Stai mettendo una nuova emoji... Faccio la POST!");
             await api.post(`/messages/${messageId}/reactions`, { emoji: emoji });
         }
         
-        console.log("5. Chiamata API andata a buon fine! Ricarico i messaggi.");
         await loadMessages();
     } catch (e) {
         console.error("ERRORE DURANTE LA CHIAMATA API:", e);
     }
 };
 
-// Apre o chiude la tendina
+// Apre o chiude la tendina delle reaction
 const toggleDropdown = (messageId) => {
     if (activeDropdownMessageId.value === messageId) {
-        activeDropdownMessageId.value = null; // La chiude se era già aperta
+        activeDropdownMessageId.value = null;
     } else {
         activeDropdownMessageId.value = messageId; // La apre
-        // Chiude eventuali menu delle emoji aperti per evitare sovrapposizioni
         activeReactionMessageId.value = null; 
     }
 };
@@ -450,8 +485,8 @@ const hideDropdown = () => {
 };
 
 const openProfileModal = () => {
-    newUsername.value = username.value; // Pre-compila col nome attuale
-    profilePhotoPreview.value = userPhotoUrl.value; // Mostra la foto attuale
+    newUsername.value = username.value; 
+    profilePhotoPreview.value = userPhotoUrl.value;
     profileError.value = '';
     isProfileModalOpen.value = true;
 };
@@ -464,15 +499,24 @@ const closeProfileModal = () => {
 
 const getImageUrl = (path) => {
     if (!path) return '';
+
     if (path.startsWith('blob:') || path.startsWith('data:') || path.startsWith('http')) {
         return path;
     }
-    // Prendi la base da axios e pulisci eventuali residui
-    const baseUrl = api.defaults.baseURL?.split('/api')[0] || 'http://localhost:3000';
-    return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
+
+    let baseUrl = api.defaults.baseURL || '';
+    // Rimuove /api alla fine
+    baseUrl = baseUrl.replace(/\/api\/?$/, '');
+
+    if (!baseUrl) {
+        baseUrl = window.location.origin;
+    }
+
+    const cleanPath = path.startsWith('/') ? path : '/' + path;
+    return `${baseUrl}${cleanPath}`;
 };
 
-// Quando l'utente sceglie una nuova foto cliccando sull'immagine
+// Gestisce la nuova foto profilo selezionata
 const handleProfilePhotoSelected = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -487,11 +531,11 @@ const saveProfile = async () => {
     let needsUpdate = false;
 
     try {
-        // 1. CAMBIO NOME UTENTE
+        // Cambia il nome utente
         if (newUsername.value.trim() !== username.value && newUsername.value.trim() !== '') {
             await api.put(`/users/${userId.value}/username`, 
                 { username: newUsername.value.trim() },
-                { headers: { 'Authorization': `Bearer ${userId.value}` } } // Invia il token/ID
+                { headers: { 'Authorization': `Bearer ${userId.value}` } } 
             );
             
             username.value = newUsername.value.trim();
@@ -499,21 +543,18 @@ const saveProfile = async () => {
             needsUpdate = true;
         }
 
-        // 2. CAMBIO FOTO PROFILO
+        // Cambia la foto profilo
         if (profilePhotoFile.value) {
             const formData = new FormData();
             formData.append("photo", profilePhotoFile.value);
             
-            // Invio con Multipart Form e Authorization Header
             await api.put(`/users/${userId.value}/photo`, formData, {
                 headers: { 
                     'Content-Type': 'multipart/form-data',
-                    'Authorization': `Bearer ${userId.value}` // Necessario per wrapAuth
+                    'Authorization': `Bearer ${userId.value}` 
                 }
             });
 
-            // Aggiorniamo l'URL locale. Aggiungiamo un timestamp (?t=...) 
-            // per "ingannare" la cache del browser e mostrare subito la nuova foto
             const newPath = `/uploads/profile_${userId.value}.jpg`;
             userPhotoUrl.value = `${newPath}?t=${new Date().getTime()}`;
             localStorage.setItem('photoUrl', userPhotoUrl.value);
@@ -546,9 +587,7 @@ const openGroupModal = async () => {
     groupError.value = '';
     
     try {
-        // Carichiamo tutti gli utenti per poterli scegliere
         const response = await api.get('/users');
-        // Escludiamo noi stessi dalla lista
         allUsers.value = response.data.filter(u => u.username !== username.value);
         isGroupModalOpen.value = true;
     } catch (e) {
@@ -566,6 +605,7 @@ const handleGroupPhotoSelected = (event) => {
     }
 };
 
+// Crea il gruppo
 const createGroup = async () => {
     if (!newGroupName.value.trim() || selectedUsers.value.length === 0) {
         groupError.value = "Inserisci un nome e seleziona almeno un membro.";
@@ -573,7 +613,7 @@ const createGroup = async () => {
     }
 
     try {
-        // 1. CREA LA STANZA
+        // Crea la istanza
         const payload = {
             isGroup: true,
             name: newGroupName.value.trim(),
@@ -582,16 +622,26 @@ const createGroup = async () => {
         const response = await api.post(`/users/${userId.value}/conversations`, payload);
         const newGroupId = response.data.conversationId;
 
-        // 2. AGGIUNGI I MEMBRI (Aspettiamo che finiscano TUTTI in modo pulito)
-        // Usiamo Promise.all per evitare di incartare Axios con un ciclo "for" lento
+        // Aggiunge i membri al gruppo
         const memberPromises = selectedUsers.value.map(uId => {
             return api.post(`/groups/${newGroupId}/members`, { userId: String(uId) });
         });
-        await Promise.all(memberPromises); // Aspetta che tutti i membri siano aggiunti!
 
-        // 3. FASE FINALE
-        await updateData(); // Ora Axios è libero e il token viaggerà sicuro!
+        // Aspetta che tutti i membri siano aggiunti
+        await Promise.all(memberPromises); 
         
+        await updateData(); 
+        
+        // Crea il gruppo
+        chats.value.unshift({
+            id: newGroupId,
+            name: newGroupName.value.trim(), 
+            photoUrl: null, 
+            isGroup: true,
+            unreadCount: 0,
+            lastActivity: new Date().toISOString()
+        });
+
         activeChatId.value = newGroupId; 
         closeGroupModal();
 
@@ -621,6 +671,188 @@ const addTenUsersModal = async () => {
         }
     }
 };
+
+const getActiveChat = () => {
+    return chats.value.find(c => (c.id || c.conversationId) === activeChatId.value) || {};
+};
+
+
+
+// Funzioni per aprire/chiudere la modale
+const openGroupInfo = async () => {
+    const chat = getActiveChat();
+    const cId = chat.id || chat.conversationId;
+
+    if (chat && chat.isGroup) {
+        try {
+            // Carica i dati del gruppo
+            const response = await api.get(`/conversations/${cId}`);
+            const groupData = response.data;
+
+            groupMembersList.value = groupData.members || [];
+            
+            editingGroupName.value = groupData.name || '';
+            editingGroupPhotoPreview.value = groupData.photoUrl || null;
+            
+            groupAddSearchQuery.value = ''; 
+            selectedUsersToAdd.value = [];
+            
+            // Carica la lista filtrata
+            await searchUsersForGroup();
+            
+            isGroupInfoModalOpen.value = true;
+        } catch (e) {
+            console.error("Errore nel caricamento dettagli gruppo:", e);
+            alert("Impossibile caricare le informazioni del gruppo.");
+        }
+    }
+};
+
+const closeGroupInfo = () => {
+    isGroupInfoModalOpen.value = false;
+};
+
+const saveGroupName = async () => {
+    groupInfoError.value = '';
+    const newName = editingGroupName.value.trim();
+
+    if (!newName) {
+        groupInfoError.value = "Il nome del gruppo non può essere vuoto.";
+        return;
+    }
+
+    try {
+        // Chiamata al backend per aggiornare il nome
+        await api.put(`/groups/${activeChatId.value}/name`, { 
+            name: newName 
+        });
+
+        // Aggiorniamo la lista delle chat locale per riflettere il cambio
+        await updateData();
+        
+    } catch (e) {
+        console.error("Errore nel salvataggio del nome del gruppo:", e);
+        groupInfoError.value = "Impossibile aggiornare il nome. Riprova.";
+    }
+};
+
+// Funzione che cerca gli utenti per il gruppo
+const searchUsersForGroup = async () => {
+    try {
+        const params = groupAddSearchQuery.value.trim() ? { username: groupAddSearchQuery.value } : {};
+        const response = await api.get('/users', { params });
+        
+        if (response.data) {
+            const currentMemberIds = new Set(groupMembersList.value.map(m => String(m.id)));
+            
+            // Filtra la lista globale degli utenti
+            groupAddSearchResults.value = response.data.filter(u => {
+                const isMe = String(u.id) === String(userId.value);
+                const isAlreadyInGroup = currentMemberIds.has(String(u.id));
+                
+                return !isMe && !isAlreadyInGroup;
+            });
+        }
+    } catch (e) {
+        console.error("Errore recupero utenti per gruppo:", e);
+    }
+};
+
+// Guarda la variabile di ricerca: appena l'utente digita, fa partire la ricerca
+watch(groupAddSearchQuery, () => {
+    searchUsersForGroup();
+});
+
+// Aggiunge i membri al gruppo
+const addMembersToGroup = async () => {
+    if (selectedUsersToAdd.value.length === 0) return;
+    
+    groupInfoError.value = '';
+
+    try {
+        const memberPromises = selectedUsersToAdd.value.map(uId => {
+            return api.post(`/groups/${activeChatId.value}/members`, { userId: String(uId) });
+        });
+        
+        await Promise.all(memberPromises); 
+        
+        // Pulisce l'interfaccia dopo il successo
+        selectedUsersToAdd.value = [];
+        groupAddSearchQuery.value = '';
+        groupAddSearchResults.value = [];
+        
+        // Aggiorna le chat a sinistra
+        await updateData(); 
+        
+    } catch (e) {
+        groupInfoError.value = "Impossibile aggiungere i partecipanti selezionati.";
+    }
+};
+const hideGroupAddDropdown = () => {
+    setTimeout(() => {
+        isGroupAddSearchFocused.value = false;
+    }, 200);
+};
+
+// Rimuove un utente dal gruppo
+const removeMemberFromGroup = async (memberId) => {
+    const isMe = String(memberId) === String(userId.value);
+
+    // Messaggio di conferma
+    const confirmMessage = isMe 
+        ? "Sei sicuro di voler abbandonare questo gruppo?" 
+        : "Sei sicuro di voler rimuovere questo utente dal gruppo?";
+
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+
+    try {
+        await api.delete(`/groups/${activeChatId.value}/members/${memberId}`);
+
+        if (isMe) {
+            closeGroupInfo();
+            activeChatId.value = null;
+        } else {
+            groupMembersList.value = groupMembersList.value.filter(m => m.id !== memberId);
+            await searchUsersForGroup(); 
+        }
+
+        await updateData(); 
+
+    } catch (e) {
+        console.error("Errore durante la rimozione/abbandono:", e);
+    }
+};
+
+const handleEditingGroupPhotoSelected = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        editingGroupPhotoFile.value = file;
+        editingGroupPhotoPreview.value = URL.createObjectURL(file);
+    }
+};
+
+const saveGroupPhoto = async () => {
+    if (!editingGroupPhotoFile.value) return;
+
+    groupInfoError.value = '';
+    try {
+        const formData = new FormData();
+        formData.append("photo", editingGroupPhotoFile.value);
+        
+        await api.put(`/groups/${activeChatId.value}/photo`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        editingGroupPhotoFile.value = null; 
+        
+        await updateData(); 
+    } catch (e) {
+        console.error("Errore salvataggio foto gruppo:", e);
+        groupInfoError.value = "Impossibile aggiornare la foto del gruppo.";
+    }
+};
 </script>
 
 <template>
@@ -646,7 +878,7 @@ const addTenUsersModal = async () => {
 
 	<div class="container-fluid">
 		<div class="row">
-			<nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
+			<nav v-if="userId" id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
 				<div class="position-sticky pt-3 sidebar-sticky d-flex flex-column" style="height: calc(100vh - 48px);">
 					
 					<div class="flex-grow-1 overflow-auto pb-3">
@@ -700,37 +932,53 @@ const addTenUsersModal = async () => {
 							</li>
 							
 							<li class="nav-item border-bottom" v-for="(chat, index) in chats" :key="index">
-								<a class="nav-link py-2 d-flex flex-column" href="#" @click.prevent="activeChatId = chat.id || chat.conversationId">
-									
-									<div class="d-flex w-100 align-items-center justify-content-between mb-1">
-										<strong class="text-dark text-truncate d-flex align-items-center">
-											<svg class="feather me-2" style="width: 16px; height: 16px; min-width: 16px;"><use href="/feather-sprite-v4.29.0.svg#message-circle"/></svg>
-											{{ chat.name || 'Chat #' + (chat.id || chat.conversationId) }}
-										</strong>
-										
-										<span v-if="chat.unreadCount > 0" class="badge bg-success rounded-pill ms-2">
-											{{ chat.unreadCount }}
-										</span>
-										<small v-else-if="chat.lastActivity" class="text-muted ms-2 text-nowrap" style="font-size: 0.75rem;">
-											{{ formatTime(chat.lastActivity) }}
-										</small>
-									</div>
-									
-									<div class="text-muted ps-4" style="font-size: 0.85rem; max-width: 100%;">
-										<span v-if="chat.lastMessage && chat.lastMessage.content">
-											
-											<span v-if="chat.isGroup && chat.lastMessage.senderName" class="fw-bold text-dark">
-												{{ chat.lastMessage.senderName }}: 
-											</span>
-											
-											{{ truncateText(chat.lastMessage.content, 40) }}
-											
-										</span>
-										<span v-else class="fst-italic">Nessun messaggio</span>
-									</div>
-									
-								</a>
-							</li>
+                                <a class="nav-link py-2 d-flex align-items-center w-100" href="#" @click.prevent="activeChatId = chat.id || chat.conversationId">
+                                    
+                                    <div class="me-3 flex-shrink-0">
+                                        <img v-if="chat.photoUrl" 
+                                            :src="getImageUrl(chat.photoUrl)" 
+                                            class="rounded-circle border shadow-sm" 
+                                            style="width: 38px; height: 38px; object-fit: cover;"
+                                            alt="Avatar">
+                                        
+                                        <div v-else 
+                                            class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" 
+                                            style="width: 38px; height: 38px; font-size: 0.9rem; text-transform: uppercase;">
+                                            {{ chat.name ? chat.name.charAt(0) : '?' }}
+                                        </div>
+                                    </div>
+
+                                    <div class="flex-grow-1 min-width-0 overflow-hidden">
+                                        
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <strong class="text-dark text-truncate d-inline-block" style="font-size: 0.95rem; max-width: 70%;">
+                                                {{ chat.name || 'Chat #' + (chat.id || chat.conversationId) }}
+                                            </strong>
+                                            
+                                            <small v-if="chat.lastActivity" class="text-muted text-nowrap ms-2 flex-shrink-0" style="font-size: 0.7rem;">
+                                                {{ formatTime(chat.lastActivity) }}
+                                            </small>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div class="text-muted text-truncate flex-grow-1" style="font-size: 0.8rem;">
+                                                <span v-if="chat.lastMessage && chat.lastMessage.content">
+                                                    <span v-if="chat.isGroup && chat.lastMessage.senderName" class="fw-bold text-dark">
+                                                        {{ chat.lastMessage.senderName }}: 
+                                                    </span>
+                                                    {{ chat.lastMessage.content }}
+                                                </span>
+                                                <span v-else class="fst-italic">Nessun messaggio</span>
+                                            </div>
+                                            
+                                            <span v-if="chat.unreadCount > 0" class="badge bg-primary rounded-pill ms-2 flex-shrink-0" style="font-size: 0.65rem;">
+                                                {{ chat.unreadCount }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                </a>
+                            </li>
 						</ul>
 					</div>
 					
@@ -738,25 +986,26 @@ const addTenUsersModal = async () => {
 						<div class="d-flex justify-content-center gap-3">
 							
 							<button 
-								@click="openProfileModal" 
-								class="btn rounded-circle p-0 d-flex align-items-center justify-content-center shadow-sm border"
-								style="width: 42px; height: 42px; background-color: #f8f9fa;"
-								:title="'Modifica profilo di @' + username"
-							>
-								<img 
-									v-if="userPhotoUrl" 
-									:src="getImageUrl(userPhotoUrl)"
-									class="rounded-circle w-100 h-100" 
-									style="object-fit: cover;"
-								/>
-								<svg 
-									v-else
-									class="feather text-secondary" 
-									style="width: 20px; height: 20px;"
-								>
-									<use :href="'/feather-sprite-v4.29.0.svg#' + STOCK_PHOTO_ICON"/>
-								</svg>
-							</button>
+                                @click="openProfileModal" 
+                                class="btn rounded-circle p-0 d-flex align-items-center justify-content-center shadow-sm border overflow-hidden"
+                                style="width: 42px; height: 42px; background-color: #f8f9fa;"
+                                :title="'Modifica profilo di @' + username"
+                            >
+                                <img 
+                                    v-if="userPhotoUrl" 
+                                    :src="getImageUrl(userPhotoUrl)"
+                                    class="w-100 h-100" 
+                                    style="object-fit: cover;"
+                                />
+                                
+                                <div 
+                                    v-else
+                                    class="w-100 h-100 bg-primary text-white d-flex align-items-center justify-content-center fw-bold" 
+                                    style="font-size: 1.2rem; text-transform: uppercase;"
+                                >
+                                    {{ username ? username.charAt(0) : '?' }}
+                                </div>
+                            </button>
 
 							<button 
 								@click="openGroupModal" 
@@ -782,166 +1031,202 @@ const addTenUsersModal = async () => {
 				</div>
 			</nav>
 
-			<main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 mt-3" style="height: 100vh; overflow-y: auto;">
+			<main :class="userId ? 'col-md-9 ms-sm-auto col-lg-10' : 'col-12'" class="px-md-4 mt-3" style="height: 100vh; overflow-y: auto;">
 				
 				<div v-if="activeChatId" class="d-flex flex-column h-100">
-					<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
-						<h1 class="h3 mb-0">
-							{{ chats.find(c => (c.id || c.conversationId) === activeChatId)?.name || 'Chat #' + activeChatId }}
-						</h1>
-						<button class="btn btn-sm btn-outline-danger" @click="activeChatId = null">Chiudi Chat</button>
-					</div>
-					
-					<div ref="chatContainer" class="flex-grow-1 p-3 bg-white border rounded overflow-auto d-flex flex-column" style="max-height: calc(100vh - 200px);">
-    
-						<div v-if="messages.length === 0" class="text-center text-muted mt-5">
-							Nessun messaggio. Scrivi qualcosa per rompere il ghiaccio!
-						</div>
+                    <div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <div class="d-flex align-items-center">
+                            
+                            <div class="me-3">
+                                <img v-if="getActiveChat().photoUrl" 
+                                    :src="getImageUrl(getActiveChat().photoUrl)" 
+                                    class="rounded-circle border shadow-sm" 
+                                    style="width: 45px; height: 45px; object-fit: cover;">
+                                
+                                <div v-else 
+                                    class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" 
+                                    style="width: 45px; height: 45px; font-size: 1.2rem;">
+                                    {{ getActiveChat().name ? getActiveChat().name.charAt(0).toUpperCase() : '?' }}
+                                </div>
+                            </div>
 
-						<div 
-							v-for="(msg, index) in messages" 
-							:key="index" 
-							class="mb-3 d-flex flex-column"
-							:class="msg.senderId == userId ? 'align-items-end' : 'align-items-start'"
-						>
-							<div class="d-flex align-items-start">
+                            <h1 
+                                class="h3 mb-0 d-flex align-items-center text-dark" 
+                                :style="getActiveChat().isGroup ? 'cursor: pointer; transition: 0.2s;' : ''"
+                                @click="getActiveChat().isGroup ? openGroupInfo() : null"
+                                :title="getActiveChat().isGroup ? 'Clicca per info gruppo' : ''"
+                                onmouseover="this.style.opacity='0.7'"
+                                onmouseout="this.style.opacity='1'"
+                            >
+                                {{ getActiveChat().name || 'Chat #' + activeChatId }}
+                            </h1>
+                        </div>
 
-								<div 
-									class="p-2 rounded shadow-sm text-break position-relative pe-4" 
-									:class="msg.senderId == userId ? 'bg-primary text-white' : 'bg-light text-dark border'"
-									style="max-width: 75%; min-width: 120px; text-align: left;"
-								>
+                        <button class="btn btn-sm btn-outline-danger" @click="activeChatId = null">Chiudi Chat</button>
+                    </div>
+                    
+                    <div ref="chatContainer" class="flex-grow-1 p-3 bg-white border rounded overflow-auto d-flex flex-column" style="max-height: calc(100vh - 200px);">
 
-									
+                        <div v-if="messages.length === 0" class="text-center text-muted mt-5">
+                            Nessun messaggio. Scrivi qualcosa per rompere il ghiaccio!
+                        </div>
 
-									<div v-if="msg.messageType === 'photo' || msg.photoUrl" class="mb-1">
-										<img :src="msg.photoUrl" class="img-fluid rounded" alt="Foto" style="max-height: 200px; object-fit: cover;">
-									</div>
+                        <div 
+                            v-for="(msg, index) in messages" 
+                            :key="index" 
+                            :id="'msg-' + msg.id" 
+                            class="mb-3 d-flex flex-column w-100 position-relative"
+                            :class="msg.senderId == userId ? 'align-items-end' : 'align-items-start'"
+                            :style="{ zIndex: (activeDropdownMessageId === msg.id || activeReactionMessageId === msg.id) ? 1050 : 1 }"
+                        >
+                            <div class="d-flex align-items-end" style="max-width: 85%;">
 
-									<div 
-										v-if="msg.replyTo && getRepliedMessage(msg.replyTo)" 
-										class="mb-2 p-2 rounded border-start border-primary border-3 text-start"
-										:class="msg.senderId == userId ? 'bg-light text-dark bg-opacity-75' : 'bg-secondary bg-opacity-10'"
-										style="font-size: 0.85rem;"
-									>
-										<strong class="text-primary d-block" style="font-size: 0.75rem;">
-											{{ getRepliedMessage(msg.replyTo)?.senderName || 'Utente' }}
-										</strong>
-										<span class="text-truncate d-inline-block w-100">
-											<span v-if="getRepliedMessage(msg.replyTo)?.messageType === 'photo' && !getRepliedMessage(msg.replyTo)?.content">
-												📷 Foto
-											</span>
-											<span v-else>
-												{{ getRepliedMessage(msg.replyTo)?.content || 'Contenuto non disponibile' }}
-											</span>
-										</span>
-									</div>
+                                <div v-if="msg.senderId != userId && getActiveChat().isGroup" class="me-2 mb-1 flex-shrink-0 align-self-end">
+                                    <img v-if="msg.senderPhotoUrl" :src="getImageUrl(msg.senderPhotoUrl)" class="rounded-circle border shadow-sm" style="width: 32px; height: 32px; object-fit: cover;">
+                                    <div v-else class="rounded-circle bg-secondary bg-opacity-25 border shadow-sm d-flex align-items-center justify-content-center text-dark fw-bold" style="width: 32px; height: 32px; font-size: 0.85rem;">
+                                        {{ msg.senderName ? msg.senderName.charAt(0).toUpperCase() : 'U' }}
+                                    </div>
+                                </div>
 
-									<div v-if="msg.content" style="font-size: 0.95rem;">
-										{{ msg.content }}
-									</div>
+                                <div 
+                                    class="p-2 rounded shadow-sm text-break position-relative pe-4" 
+                                    :class="msg.senderId == userId ? 'bg-primary text-white ms-auto' : 'bg-light text-dark border'"
+                                    style="min-width: 120px; width: fit-content; text-align: left;"
+                                >
 
-									<div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mt-1">
-										<span 
-											v-for="(reaction, rIndex) in msg.reactions" 
-											:key="rIndex"
-											@click.stop="reaction.userId === userId ? toggleReaction(msg.id, reaction.emoji) : null"
-											class="badge bg-white text-dark shadow-sm d-flex align-items-center justify-content-center"
-											:class="reaction.userId === userId ? 'border border-primary' : 'border border-light'"
-											style="font-size: 0.85rem; padding: 3px 6px; border-radius: 12px; cursor: pointer;"
-											:title="reaction.userId === userId ? 'Clicca per rimuovere' : ''"
-										>
-											{{ reaction.emoji }}
-										</span>
-									</div>
+                                    <div v-if="msg.senderId != userId && getActiveChat().isGroup" class="fw-bold mb-1" style="font-size: 0.75rem; color: #0d6efd;">
+                                        ~ {{ msg.senderName }}
+                                    </div>
 
-									<button 
-										@click.stop="toggleDropdown(msg.id)" 
-										class="btn btn-sm position-absolute top-0 end-0 mt-1 me-1 border-0" 
-										:class="msg.senderId == userId ? 'text-white' : 'text-dark'"
-										style="padding: 2px; background: transparent;"
-										title="Opzioni"
-									>
-										<svg class="feather" style="width: 18px; height: 18px;"><use href="/feather-sprite-v4.29.0.svg#chevron-down"/></svg>
-									</button>
+                                    <div v-if="msg.messageType === 'photo' || msg.photoUrl" class="mb-1">
+                                        <img :src="msg.photoUrl" class="img-fluid rounded" alt="Foto" style="max-height: 200px; object-fit: cover;">
+                                    </div>
 
-									<div 
-										v-if="activeDropdownMessageId === msg.id"
-										class="position-absolute bg-white border rounded shadow-sm py-1 z-3"
-										style="top: 25px; right: 10px; min-width: 130px;"
-									>
-										<button @click.stop="handleAction('react', msg.id)" class="dropdown-item d-flex align-items-center text-dark text-start w-100 px-3 py-2 border-0 bg-transparent">
-											<svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#smile"/></svg>
-											Reagisci
-										</button>
-										<button @click.stop="handleAction('forward', msg.id)" class="dropdown-item d-flex align-items-center text-dark text-start w-100 px-3 py-2 border-0 bg-transparent">
-											<svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#corner-up-right"/></svg>
-											Inoltra
-										</button>
-										<button v-if="msg.senderId == userId" @click.stop="handleAction('delete', msg.id)" class="dropdown-item d-flex align-items-center text-danger text-start w-100 px-3 py-2 border-0 bg-transparent">
-											<svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#trash-2"/></svg>
-											Elimina
-										</button>
-										<button 
-											@click.stop="handleAction('reply', msg.id)"
-											class="dropdown-item d-flex align-items-center text-dark text-start w-100 px-3 py-2 border-0 bg-transparent"
-											onmouseover="this.style.backgroundColor='#f8f9fa'"
-											onmouseout="this.style.backgroundColor='transparent'"
-										>
-											<svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#message-square"/></svg>
-											Rispondi
-										</button>
-									</div>
+                                    <div 
+                                        v-if="msg.replyTo && getRepliedMessage(msg.replyTo)" 
+                                        class="mb-2 p-2 rounded border-start border-primary border-3 text-start"
+                                        :class="msg.senderId == userId ? 'bg-light text-dark bg-opacity-75' : 'bg-secondary bg-opacity-10'"
+                                        style="font-size: 0.85rem;"
+                                    >
+                                        <strong class="text-primary d-block" style="font-size: 0.75rem;">
+                                            {{ getRepliedMessage(msg.replyTo)?.senderName || 'Utente' }}
+                                        </strong>
+                                        <span class="text-truncate d-inline-block w-100">
+                                            <span v-if="getRepliedMessage(msg.replyTo)?.messageType === 'photo' && !getRepliedMessage(msg.replyTo)?.content">
+                                                📷 Foto
+                                            </span>
+                                            <span v-else>
+                                                {{ getRepliedMessage(msg.replyTo)?.content || 'Contenuto non disponibile' }}
+                                            </span>
+                                        </span>
+                                    </div>
 
-									<div 
-										v-if="activeReactionMessageId === msg.id"
-										class="position-absolute bg-white border rounded shadow-lg p-1 d-flex gap-1 z-3"
-										style="top: 25px; right: 10px; min-width: max-content;"
-									>
-										<button 
-											v-for="emoji in emojis" 
-											:key="emoji"
-											@click.stop="toggleReaction(msg.id, emoji)"
-											class="btn btn-sm btn-light rounded-circle border-0 d-flex align-items-center justify-content-center"
-											style="width: 32px; height: 32px; font-size: 1.2rem; padding: 0; transition: transform 0.1s ease;"
-											onmouseover="this.style.transform='scale(1.2)'"
-											onmouseout="this.style.transform='scale(1)'"
-										>
-											{{ emoji }}
-										</button>
-									</div>
-									
-										
-									<div 
-										class="d-flex align-items-center justify-content-end mt-1" 
-										style="font-size: 0.65rem;"
-										:class="msg.senderId == userId ? 'text-white-50' : 'text-muted'"
-									>
-										<span class="me-1">{{ formatTime(msg.timestamp) }}</span>
-										
-										<span v-if="msg.senderId == userId" class="ms-1" style="font-size: 0.8rem;">
-											<span v-if="msg.read" class="text-info" title="Letto">✓✓</span>
-											<span v-else-if="msg.delivered" class="text-white-50" title="Consegnato">✓✓</span>
-											<span v-else class="text-white-50" title="Inviato">✓</span>
-										</span>
-									</div>
-								</div>
-							</div>
-						</div>						
-						
-					</div>
+                                    <div v-if="msg.content" style="font-size: 0.95rem;">
+                                        {{ msg.content }}
+                                    </div>
+
+                                    <div v-if="msg.reactions && msg.reactions.length > 0" class="d-flex flex-wrap gap-1 mt-1">
+                                        <span 
+                                            v-for="(reaction, rIndex) in msg.reactions" 
+                                            :key="rIndex"
+                                            @click.stop="reaction.userId === userId ? toggleReaction(msg.id, reaction.emoji) : null"
+                                            class="badge bg-white text-dark shadow-sm d-flex align-items-center justify-content-center"
+                                            :class="reaction.userId === userId ? 'border border-primary' : 'border border-light'"
+                                            style="font-size: 0.85rem; padding: 3px 6px; border-radius: 12px; cursor: pointer;"
+                                            :title="reaction.userId === userId ? 'Clicca per rimuovere' : ''"
+                                        >
+                                            {{ reaction.emoji }}
+                                        </span>
+                                    </div>
+
+                                    <button 
+                                        @click.stop="toggleDropdown(msg.id)" 
+                                        class="btn btn-sm position-absolute top-0 end-0 mt-1 me-1 border-0" 
+                                        :class="msg.senderId == userId ? 'text-white' : 'text-dark'"
+                                        style="padding: 2px; background: transparent;"
+                                        title="Opzioni"
+                                    >
+                                        <svg class="feather" style="width: 18px; height: 18px;"><use href="/feather-sprite-v4.29.0.svg#chevron-down"/></svg>
+                                    </button>
+
+                                    <div 
+                                        v-if="activeDropdownMessageId === msg.id"
+                                        class="position-absolute bg-white border rounded shadow-sm py-1 z-3"
+                                        style="top: 25px; right: 10px; min-width: 130px;"
+                                    >
+                                        <button @click.stop="handleAction('react', msg.id)" class="dropdown-item d-flex align-items-center text-dark text-start w-100 px-3 py-2 border-0 bg-transparent">
+                                            <svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#smile"/></svg>
+                                            Reagisci
+                                        </button>
+                                        <button @click.stop="handleAction('forward', msg.id)" class="dropdown-item d-flex align-items-center text-dark text-start w-100 px-3 py-2 border-0 bg-transparent">
+                                            <svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#corner-up-right"/></svg>
+                                            Inoltra
+                                        </button>
+                                        <button v-if="msg.senderId == userId" @click.stop="handleAction('delete', msg.id)" class="dropdown-item d-flex align-items-center text-danger text-start w-100 px-3 py-2 border-0 bg-transparent">
+                                            <svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#trash-2"/></svg>
+                                            Elimina
+                                        </button>
+                                        <button 
+                                            @click.stop="handleAction('reply', msg.id)"
+                                            class="dropdown-item d-flex align-items-center text-dark text-start w-100 px-3 py-2 border-0 bg-transparent"
+                                            onmouseover="this.style.backgroundColor='#f8f9fa'"
+                                            onmouseout="this.style.backgroundColor='transparent'"
+                                        >
+                                            <svg class="feather me-2" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#message-square"/></svg>
+                                            Rispondi
+                                        </button>
+                                    </div>
+
+                                    <div 
+                                        v-if="activeReactionMessageId === msg.id"
+                                        class="position-absolute bg-white border rounded shadow-lg p-1 d-flex gap-1 z-3"
+                                        style="top: 25px; right: 10px; min-width: max-content;"
+                                    >
+                                        <button 
+                                            v-for="emoji in emojis" 
+                                            :key="emoji"
+                                            @click.stop="toggleReaction(msg.id, emoji)"
+                                            class="btn btn-sm btn-light rounded-circle border-0 d-flex align-items-center justify-content-center"
+                                            style="width: 32px; height: 32px; font-size: 1.2rem; padding: 0; transition: transform 0.1s ease;"
+                                            onmouseover="this.style.transform='scale(1.2)'"
+                                            onmouseout="this.style.transform='scale(1)'"
+                                        >
+                                            {{ emoji }}
+                                        </button>
+                                    </div>
+                                    
+                                        
+                                    <div 
+                                        class="d-flex align-items-center justify-content-end mt-1" 
+                                        style="font-size: 0.65rem;"
+                                        :class="msg.senderId == userId ? 'text-white-50' : 'text-muted'"
+                                    >
+                                        <span class="me-1">{{ formatTime(msg.timestamp) }}</span>
+                                        
+                                        <span v-if="msg.senderId == userId" class="ms-1" style="font-size: 0.8rem;">
+                                            <span v-if="msg.read" class="text-info" title="Letto">✓✓</span>
+                                            <span v-else-if="msg.delivered" class="text-white-50" title="Consegnato">✓✓</span>
+                                            <span v-else class="text-white-50" title="Inviato">✓</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>                  
+                        
+                    </div>
 
 					<div class="mt-3 mb-5">
 
 						<div v-if="selectedPhoto" class="mb-2 p-2 bg-light border rounded d-flex justify-content-between align-items-center">
-							<span class="small text-muted">
-								<svg class="feather me-1" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#image"/></svg>
-								Foto pronta: <strong>{{ selectedPhoto.name }}</strong>
-							</span>
-							<button @click="selectedPhoto = null; if(fileInput) fileInput.value = ''" class="btn btn-sm btn-outline-danger py-0 px-1">
-								<svg class="feather" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#x"/></svg>
-							</button>
-						</div>
+                            <span class="small text-muted text-truncate me-2">
+                                <svg class="feather me-1" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#image"/></svg>
+                                Foto pronta: <strong>{{ selectedPhoto.name }}</strong>
+                            </span>
+                            
+                            <button @click="selectedPhoto = null; if(fileInput) fileInput.value = ''" class="btn btn-sm btn-outline-danger py-0 px-1 flex-shrink-0">
+                                <svg class="feather" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#x"/></svg>
+                            </button>
+                        </div>
 
 						<div 
 							v-if="replyingToMessage" 
@@ -1025,7 +1310,7 @@ const addTenUsersModal = async () => {
 				<button 
 					v-for="(chat, index) in chats" 
 					:key="index"
-					@click="confirmForward(chat)"
+					@click="forwardMessage(chat)"
 					class="list-group-item list-group-item-action d-flex align-items-center"
 				>
 					<svg class="feather me-2 text-muted" style="width: 16px; height: 16px;"><use href="/feather-sprite-v4.29.0.svg#message-circle"/></svg>
@@ -1117,7 +1402,7 @@ const addTenUsersModal = async () => {
 				<label class="form-label small fw-bold">Seleziona Partecipanti</label>
 				<div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;">
 					<div v-for="user in allUsers" :key="user.id" class="form-check">
-						<input class="form-check-input" type="checkbox" :value="user.id" :id="'u'+user.id" v-model="selectedUsers">
+						<input class="form-check-input" type="checkbox" :value="user.id" :id="'u'+user.id"  v-model="selectedUsers">
 						<label class="form-check-label small" :for="'u'+user.id">@{{ user.username }}</label>
 					</div>
 				</div>
@@ -1129,6 +1414,182 @@ const addTenUsersModal = async () => {
 			</div>
 		</div>
 	</div>
+
+	<div v-if="isGroupInfoModalOpen" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="background: rgba(0,0,0,0.6); z-index: 1060;">
+    <div class="bg-white p-4 rounded shadow-lg d-flex flex-column" style="width: 450px; max-width: 90%; max-height: 90vh;">
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h5 class="mb-0 text-dark">Impostazioni Gruppo</h5>
+            <button @click="closeGroupInfo" class="btn-close"></button>
+        </div>
+
+        <div class="overflow-auto pe-2" style="flex-grow: 1;">
+            <div class="text-center mb-4">
+                <div class="position-relative d-inline-block">
+                    <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center overflow-hidden shadow-sm" style="width: 120px; height: 120px;">
+                        <img 
+                            v-if="editingGroupPhotoPreview" 
+                            :src="getImageUrl(editingGroupPhotoPreview)" 
+                            class="w-100 h-100" 
+                            style="object-fit: cover;" 
+                        />
+                        <svg v-else class="feather text-secondary" style="width: 50px; height: 50px;"><use href="/feather-sprite-v4.29.0.svg#users"/></svg>
+                    </div>
+                    
+                    <label class="position-absolute bottom-0 end-0 bg-primary text-white rounded-circle p-2 shadow" style="cursor: pointer; transition: 0.2s;" title="Cambia foto">
+                        <svg class="feather" style="width: 20px; height: 20px;"><use href="/feather-sprite-v4.29.0.svg#camera"/></svg>
+                        <input 
+                            type="file" 
+                            class="d-none" 
+                            accept="image/*" 
+                            @change="handleEditingGroupPhotoSelected"
+                        >
+                    </label>
+                </div>
+
+                <div v-if="editingGroupPhotoFile" class="mt-3">
+                    <button @click="saveGroupPhoto" class="btn btn-sm btn-primary px-3">
+                        Conferma Nuova Foto
+                    </button>
+                    <button @click="editingGroupPhotoFile = null; editingGroupPhotoPreview = getActiveChat().photoUrl" class="btn btn-sm btn-link text-muted">
+                        Annulla
+                    </button>
+                </div>
+            </div>
+
+            <div class="mb-4">
+				<label class="form-label small fw-bold text-muted">Nome Gruppo</label>
+				<div class="input-group">
+					<input 
+						type="text" 
+						class="form-control" 
+						v-model="editingGroupName"
+						@keyup.enter="saveGroupName" 
+					>
+					<button 
+						class="btn btn-primary" 
+						type="button" 
+						@click="saveGroupName"
+					>
+						Salva
+					</button>
+				</div>
+				<div v-if="groupInfoError" class="text-danger small mt-1">
+					{{ groupInfoError }}
+				</div>
+			</div>
+
+            <div class="mb-4">
+				<label class="form-label small fw-bold text-muted">Aggiungi Partecipanti</label>
+				
+				<div class="position-relative">
+                    <div class="input-group">
+						<input 
+							type="text" 
+							class="form-control" 
+							placeholder="Cerca utente..." 
+							v-model="groupAddSearchQuery"
+							@focus="isGroupAddSearchFocused = true; searchUsersForGroup()"
+							@blur="hideGroupAddDropdown"
+						>
+						<button 
+							class="btn btn-primary d-flex align-items-center" 
+							type="button" 
+							@click="addMembersToGroup"
+							:disabled="selectedUsersToAdd.length === 0"
+						>
+							<svg class="feather me-1" style="width: 16px; height: 16px;"><use href="/feather-sprite-v4.29.0.svg#user-plus"/></svg>
+							Aggiungi
+						</button>
+					</div>
+
+                    <div 
+						v-if="isGroupAddSearchFocused" 
+						class="dropdown-menu show w-100 shadow-lg border-0 mt-1" 
+						style="position: absolute; top: 100%; left: 0; z-index: 1070; max-height: 200px; overflow-y: auto;"
+						@mousedown.prevent
+					>
+                        <div v-if="groupAddSearchResults.length === 0" class="dropdown-item text-muted small fst-italic text-center py-2">
+                            Nessun utente disponibile.
+                        </div>
+
+                        <label 
+							v-for="user in groupAddSearchResults" 
+							:key="user.id" 
+							class="dropdown-item d-flex align-items-center py-2 mb-0"
+                            style="cursor: pointer;"
+                            onmouseover="this.style.backgroundColor='#f8f9fa'"
+                            onmouseout="this.style.backgroundColor='transparent'"
+						>
+							<div class="form-check mb-0 w-100 d-flex align-items-center">
+								<input 
+									class="form-check-input border-secondary me-2 mt-0" 
+									type="checkbox" 
+									:value="user.id" 
+									v-model="selectedUsersToAdd"
+									style="cursor: pointer;"
+								>
+								<span class="small">@{{ user.username }}</span>
+							</div>
+						</label>
+					</div>
+				</div>
+
+                <div v-if="selectedUsersToAdd.length > 0" class="mt-2 p-2 bg-light border rounded shadow-sm d-flex flex-wrap gap-1">
+					<span class="small text-muted w-100 mb-1" style="font-size: 0.7rem; text-transform: uppercase;">Pronti per l'aggiunta:</span>
+					<span 
+						v-for="id in selectedUsersToAdd" 
+						:key="id" 
+						class="badge bg-primary d-flex align-items-center py-1 pe-2 shadow-sm"
+					>
+						@{{ groupAddSearchResults.find(u => u.id === id)?.username || 'Utente' }}
+                        
+                        <button 
+                            type="button" 
+                            class="btn-close btn-close-white ms-2" 
+                            style="font-size: 0.45rem;" 
+                            @click="selectedUsersToAdd = selectedUsersToAdd.filter(uId => uId !== id)"
+                            title="Rimuovi selezione"
+                        ></button>
+					</span>
+				</div>
+			</div>
+
+            <div class="mb-2">
+				<label class="form-label small fw-bold text-muted">Membri del Gruppo ({{ groupMembersList.length }})</label>
+				<ul class="list-group">
+					<li v-for="member in groupMembersList" :key="member.id" class="list-group-item d-flex justify-content-between align-items-center py-2">
+						<span class="fw-medium">
+							@{{ member.username }}
+							<span v-if="member.id == userId" class="badge bg-secondary ms-1" style="font-size: 0.65rem;">Tu</span>
+						</span>
+						
+						<button 
+							class="btn btn-sm btn-outline-danger py-0 px-2" 
+							title="Rimuovi dal gruppo"
+							@click="removeMemberFromGroup(member.id)"
+						>
+							<svg class="feather" style="width: 14px; height: 14px;"><use href="/feather-sprite-v4.29.0.svg#user-minus"/></svg>
+						</button>
+					</li>
+				</ul>
+			</div>
+
+			<hr class="my-4">
+
+            <div class="d-grid mb-3">
+                <button 
+                    @click="removeMemberFromGroup(userId)" 
+                    class="btn btn-outline-danger d-flex align-items-center justify-content-center py-2"
+                >
+                    <svg class="feather me-2" style="width: 18px; height: 18px;"><use href="/feather-sprite-v4.29.0.svg#log-out"/></svg>
+                    Abbandona Gruppo
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
 
 </template>
 

@@ -26,6 +26,8 @@ import { useRouter } from 'vue-router';
 import api from '../services/axios.js'; 
 
 const username = ref('');
+const token = ref('');
+const photoUrl = ref('');
 const errorMessage = ref('');
 const router = useRouter();
 
@@ -54,6 +56,7 @@ const doLogin = async () => {
     console.log("Login perfetto! Salvo il token:", token);
     localStorage.setItem('token', token);
     localStorage.setItem('username', username.value);
+    localStorage.setItem('photoUrl', response.data.photoUrl || '');
     
     router.push('/');
     

@@ -9,14 +9,11 @@ import (
 )
 
 // doLogin gestisce l'endpoint POST /session
-// Riceve un JSON con il nome utente e restituisce l'identificatore (Bearer token fittizio)
 func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
-	// 1. Definiamo la struttura attesa nel body della richiesta
 	var req struct {
 		Name string `json:"name"`
 	}
 
-	// 2. Facciamo il parsing del JSON
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ctx.Logger.WithError(err).Error("doLogin: error decoding JSON")
 		w.Header().Set("Content-Type", "application/json")
@@ -25,7 +22,6 @@ func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter
 		return
 	}
 
-	// 3. Validazione base dell'username (tra 3 e 16 caratteri come da OpenAPI)
 	if len(req.Name) < 3 || len(req.Name) > 16 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -33,8 +29,7 @@ func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter
 		return
 	}
 
-	// 4. Chiamiamo il Database per effettuare il login/registrazione
-	identifier, err := rt.db.DoLogin(req.Name)
+	identifier, photoUrl, err := rt.db.DoLogin(req.Name)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("doLogin: database error")
 		w.Header().Set("Content-Type", "application/json")
@@ -43,10 +38,11 @@ func (rt *_router) doLogin(w http.ResponseWriter, r *http.Request, ps httprouter
 		return
 	}
 
-	// 5. Restituiamo l'identificatore (con Status 201 Created)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"identifier": identifier,
+		"username":   req.Name,
+		"photoUrl":   photoUrl,
 	})
 }
